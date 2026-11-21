@@ -45,6 +45,7 @@ struct App {
     manager: Manager,
     settings: store::Settings,
     bridge: Arc<api::Bridge>,
+    logo: Option<egui::TextureHandle>,
     url_input: String,
     folder_edit: String,
     notice: Option<(String, bool)>,
@@ -56,11 +57,13 @@ struct App {
 impl App {
     fn new(cc: &eframe::CreationContext<'_>, settings: store::Settings, bridge: Arc<api::Bridge>) -> Self {
         brand::apply_theme(&cc.egui_ctx);
+        let logo = brand::load_logo(&cc.egui_ctx);
         Self {
             manager: Manager::new(),
             folder_edit: settings.folder.clone(),
             settings,
             bridge,
+            logo,
             url_input: String::new(),
             notice: None,
             dirty: false,
@@ -120,8 +123,13 @@ impl App {
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    brand::mark(ui, 42.0);
-                    ui.add_space(4.0);
+                    if let Some(logo) = &self.logo {
+                        ui.add(egui::Image::new(egui::load::SizedTexture::new(
+                            logo.id(),
+                            egui::vec2(42.0, 42.0),
+                        )));
+                        ui.add_space(4.0);
+                    }
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new("Pookye DM")
