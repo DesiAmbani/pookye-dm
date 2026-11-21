@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Pookye Download Manager" width="180" />
+<img src="assets/logo.svg" alt="Pookye Download Manager" width="180" />
 
 # Pookye Download Manager
 
@@ -42,7 +42,7 @@ cargo build --release
 ./target/release/pookye-dm
 ```
 
-The resulting binary is self-contained: the logo is embedded at compile time.
+The resulting binary is self-contained: the header mark is drawn at run time by `src/brand.rs`, from the same shapes and palette as `assets/logo.svg`.
 
 ## Using it
 
@@ -105,8 +105,8 @@ src/main.rs      egui application: header, add bar, job cards, footer
 src/engine.rs    segmented HTTP engine, probe, workers, speed sampling, formatting
 src/api.rs       loopback JSON API (ping / add / jobs)
 src/store.rs     settings + history persistence
-src/brand.rs     palette and embedded logo
-assets/logo.png  brand mark, also embedded into the binary
+src/brand.rs     palette and the painted brand mark
+assets/logo.svg  vector brand mark used by the README
 extension/       Manifest V3 browser handoff extension
 ```
 
