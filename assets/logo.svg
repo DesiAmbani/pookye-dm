@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Pookye Download Manager">
+  <defs>
+    <radialGradient id="field" cx="50%" cy="45%" r="62%">
+      <stop offset="0%" stop-color="#8c0434"/>
+      <stop offset="60%" stop-color="#650428"/>
+      <stop offset="100%" stop-color="#4a021e"/>
+    </radialGradient>
+    <linearGradient id="body" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ff5c8a"/>
+      <stop offset="45%" stop-color="#ea0159"/>
+      <stop offset="100%" stop-color="#a3023d"/>
+    </linearGradient>
+    <linearGradient id="tail" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c1034a"/>
+      <stop offset="100%" stop-color="#650428"/>
+    </linearGradient>
+    <clipPath id="tailClip">
+      <path d="M96 214 L150 236 L176 214 L120 150 Z"/>
+    </clipPath>
+  </defs>
+
+  <rect width="256" height="256" fill="url(#field)"/>
+
+  <!-- striped handle of the mark -->
+  <path d="M92 206 L150 238 L181 214 L124 148 Z" fill="url(#tail)" stroke="#140006" stroke-width="9" stroke-linejoin="round"/>
+  <g clip-path="url(#tailClip)" stroke="#140006" stroke-width="6">
+    <line x1="96" y1="216" x2="132" y2="196"/>
+    <line x1="108" y1="228" x2="144" y2="208"/>
+    <line x1="120" y1="240" x2="156" y2="220"/>
+    <line x1="132" y1="252" x2="168" y2="232"/>
+  </g>
+
+  <!-- main body -->
+  <path d="M150 30
+           C 196 32, 222 74, 214 118
+           C 208 152, 186 168, 182 198
+           C 178 224, 152 236, 126 224
+           C 104 214, 92 196, 100 174
+           L 132 96
+           C 140 68, 143 38, 150 30 Z"
+        fill="url(#body)" stroke="#140006" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- four facets -->
+  <g fill="#ffe9f0" stroke="#140006" stroke-width="7" stroke-linejoin="round">
+    <path d="M148 62 L176 58 L164 84 Z"/>
+    <path d="M186 82 L206 104 L178 108 Z"/>
+    <path d="M140 92 L168 96 L152 120 Z"/>
+    <path d="M176 124 L202 138 L176 152 Z"/>
+  </g>
+</svg>
