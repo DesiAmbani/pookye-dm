@@ -1,9 +1,9 @@
 //! Loopback HTTP API so browsers and scripts can hand downloads to Pookye DM.
 //!
 //! Endpoints (all JSON, CORS enabled for browser extensions):
-//!   GET  /ping   -> { app, api, version }
-//!   POST /add    <- { url, fileName? }  -> { ok: true, id }
-//!   GET  /jobs   -> { app, api, jobs: [...] }
+//!   GET  /ping   -> { app, api, version, name }
+//!   GET  /jobs   -> { app, api, version, averageSpeedBps, active, queued, jobs: [...] }
+//!   POST /add    <- { url, fileName? }  -> { ok: true, queued: true }
 
 use std::io::Read;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -154,16 +154,13 @@ pub fn spawn(bridge: Arc<Bridge>, version: String) {
                                 );
                                 continue;
                             }
-                            let id = if let Ok(mut queue) = bridge.add_queue.lock() {
+                            if let Ok(mut queue) = bridge.add_queue.lock() {
                                 queue.push(add);
-                                queue.len()
-                            } else {
-                                0
-                            };
+                            }
                             respond(
                                 request,
                                 200,
-                                serde_json::json!({ "ok": true, "id": id }).to_string(),
+                                serde_json::json!({ "ok": true, "queued": true }).to_string(),
                             );
                         }
                         Err(error) => respond(
