@@ -1,16 +1,23 @@
 //! Pookye Download Manager - a fast, segmented download manager.
 
+mod actions;
 mod api;
 mod brand;
+mod dialog;
 mod engine;
+mod pages;
 mod store;
+mod widgets;
 
+use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Color32, RichText};
-use engine::{format_bytes, format_eta, format_speed, Manager, Status};
+use eframe::egui::{self, RichText};
+use engine::{format_bytes, format_speed, Category, Manager};
+use dialog::ProbeForm;
 
 fn main() -> eframe::Result {
     let settings = store::load();
@@ -19,8 +26,8 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1000.0, 760.0])
-            .with_min_inner_size([720.0, 520.0])
+            .with_inner_size([1180.0, 780.0])
+            .with_min_inner_size([900.0, 600.0])
             .with_title("Pookye Download Manager"),
         ..Default::default()
     };
@@ -32,141 +39,375 @@ fn main() -> eframe::Result {
     )
 }
 
-#[derive(Clone, Copy)]
-enum Action {
-    Pause(u64),
-    Resume(u64),
-    Cancel(u64),
-    Open,
-    Remove(u64),
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Page {
+    Downloads,
+    Speed,
+    Networks,
+    Schedule,
+    Settings,
+    About,
 }
 
-struct App {
-    manager: Manager,
-    settings: store::Settings,
-    bridge: Arc<api::Bridge>,
-    logo: Option<egui::TextureHandle>,
-    url_input: String,
-    folder_edit: String,
-    notice: Option<(String, bool)>,
-    dirty: bool,
+pub(crate) struct App {
+    pub(crate) manager: Manager,
+    pub(crate) settings: store::Settings,
+    pub(crate) bridge: Arc<api::Bridge>,
+    pub(crate) logo: Option<egui::TextureHandle>,
+    pub(crate) page: Page,
+    pub(crate) url_input: String,
+    pub(crate) search: String,
+    pub(crate) category: Option<Category>,
+    pub(crate) selected: HashSet<u64>,
+    pub(crate) show_add: bool,
+    pub(crate) add: ProbeForm,
+    pub(crate) notice: Option<(String, bool, Instant)>,
+    pub(crate) dirty: bool,
     saved_at: Instant,
-    history_added: usize,
+    pub(crate) clipboard: Option<arboard::Clipboard>,
+    clipboard_checked: Instant,
+    last_clipboard: String,
 }
 
 impl App {
-    fn new(cc: &eframe::CreationContext<'_>, settings: store::Settings, bridge: Arc<api::Bridge>) -> Self {
+    fn new(
+        cc: &eframe::CreationContext<'_>,
+        settings: store::Settings,
+        bridge: Arc<api::Bridge>,
+    ) -> Self {
         brand::apply_theme(&cc.egui_ctx);
         let logo = brand::load_logo(&cc.egui_ctx);
+        let manager = Manager::new(settings.max_concurrent, settings.speed_limit as u64);
+        let clipboard = if settings.clipboard {
+            arboard::Clipboard::new().ok()
+        } else {
+            None
+        };
         Self {
-            manager: Manager::new(),
-            folder_edit: settings.folder.clone(),
+            manager,
+            add: ProbeForm::new(&settings),
             settings,
             bridge,
             logo,
+            page: Page::Downloads,
             url_input: String::new(),
+            search: String::new(),
+            category: None,
+            selected: HashSet::new(),
+            show_add: false,
             notice: None,
             dirty: false,
             saved_at: Instant::now(),
-            history_added: 0,
+            clipboard,
+            clipboard_checked: Instant::now(),
+            last_clipboard: String::new(),
         }
     }
 
-    fn start_download(&mut self) {
+    pub(crate) fn notify(&mut self, message: impl Into<String>, bad: bool) {
+        self.notice = Some((message.into(), bad, Instant::now()));
+    }
+
+    pub(crate) fn apply_limits(&mut self) {
+        self.manager.set_speed_limit(self.settings.speed_limit as u64);
+        self.manager.set_max_concurrent(self.settings.max_concurrent);
+        self.dirty = true;
+    }
+
+    fn start_download(&mut self, url: String, name: Option<String>) -> bool {
         let folder = PathBuf::from(self.settings.folder.trim());
-        match self.manager.add(
-            self.url_input.clone(),
-            None,
-            &folder,
-            self.settings.connections,
-        ) {
+        match self
+            .manager
+            .add(url, name, &folder, self.settings.connections)
+        {
             Ok(_) => {
-                self.url_input.clear();
-                self.notice = None;
+                self.notify("Added to the queue.", false);
+                true
             }
-            Err(message) => self.notice = Some((message, true)),
+            Err(message) => {
+                self.notify(message, true);
+                false
+            }
         }
     }
 
-    fn apply_action(&mut self, action: Action) {
-        match action {
-            Action::Pause(id) => self.manager.pause(id),
-            Action::Resume(id) => self.manager.resume(id),
-            Action::Cancel(id) => self.manager.cancel(id),
-            Action::Open => open_folder(&self.settings.folder),
-            Action::Remove(id) => self.manager.remove(id),
+    fn start_pasted(&mut self) {
+        let url = self.url_input.trim().to_string();
+        if url.is_empty() {
+            self.notify("Paste a link to a file first.", true);
+            return;
         }
+        if self.start_download(url, None) {
+            self.url_input.clear();
+        }
+    }
+
+    pub(crate) fn open_add(&mut self) {
+        self.add = ProbeForm::new(&self.settings);
+        self.show_add = true;
+    }
+
+    pub(crate) fn check_link(&mut self) {
+        if self.add.checking {
+            return;
+        }
+        let url = self.add.url.trim().to_string();
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            self.add.error =
+                Some("That isn't a web link. Links start with http:// or https://.".to_string());
+            return;
+        }
+        let (tx, rx) = channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(engine::probe(&url));
+        });
+        self.add.checking = true;
+        self.add.rx = Some(rx);
+        self.add.error = None;
+        self.add.info = None;
+    }
+
+    fn poll_probe(&mut self) {
+        let Some(rx) = &self.add.rx else { return };
+        match rx.try_recv() {
+            Ok(result) => {
+                self.add.checking = false;
+                self.add.rx = None;
+                match result {
+                    Ok(info) => {
+                        if self.add.name.trim().is_empty() {
+                            if let Some(name) = &info.suggested {
+                                self.add.name = name.clone();
+                            }
+                        }
+                        self.add.info = Some(info);
+                        self.add.error = None;
+                    }
+                    Err(message) => self.add.error = Some(message),
+                }
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.add.checking = false;
+                self.add.rx = None;
+            }
+        }
+    }
+
+    fn poll_clipboard(&mut self) {
+        if !self.settings.clipboard
+            || self.clipboard_checked.elapsed() < Duration::from_millis(700)
+        {
+            return;
+        }
+        self.clipboard_checked = Instant::now();
+        if self.clipboard.is_none() {
+            self.clipboard = arboard::Clipboard::new().ok();
+        }
+        let text = {
+            let Some(clipboard) = self.clipboard.as_mut() else {
+                return;
+            };
+            match clipboard.get_text() {
+                Ok(text) => text.trim().to_string(),
+                Err(_) => return,
+            }
+        };
+        if !(text.starts_with("http://") || text.starts_with("https://")) {
+            return;
+        }
+        if text == self.last_clipboard {
+            return;
+        }
+        self.last_clipboard = text.clone();
+        if text == self.url_input.trim() {
+            return;
+        }
+        if self.manager.jobs.iter().any(|job| job.url == text) {
+            return;
+        }
+        self.url_input = text;
+        self.notify("Link copied — press Start download.", false);
     }
 
     fn pump_api(&mut self) {
         for request in self.bridge.drain() {
             let folder = PathBuf::from(self.settings.folder.trim());
-            let outcome = self.manager.add(
+            if let Err(message) = self.manager.add(
                 request.url,
                 request.file_name,
                 &folder,
                 self.settings.connections,
-            );
-            if let Err(message) = outcome {
-                self.notice = Some((message, true));
+            ) {
+                self.notify(message, true);
             }
         }
         self.bridge.publish(self.manager.snapshot_json());
     }
 
-    fn header(&mut self, ctx: &egui::Context) {
-        egui::TopBottomPanel::top("header")
+    pub(crate) fn filtered_rows(&self) -> Vec<u64> {
+        let needle = self.search.trim().to_lowercase();
+        let mut rows: Vec<u64> = self
+            .manager
+            .jobs
+            .iter()
+            .filter(|job| {
+                self.category
+                    .map(|category| job.category == category)
+                    .unwrap_or(true)
+            })
+            .filter(|job| {
+                needle.is_empty()
+                    || job.display_name().to_lowercase().contains(&needle)
+                    || job.url.to_lowercase().contains(&needle)
+            })
+            .map(|job| job.id)
+            .collect();
+        rows.reverse();
+        rows
+    }
+
+    pub(crate) fn notice_line(&self, ui: &mut egui::Ui) {
+        if let Some((message, bad, at)) = &self.notice {
+            if at.elapsed() < Duration::from_secs(8) {
+                ui.label(
+                    RichText::new(message)
+                        .size(11.5)
+                        .color(if *bad { brand::ACCENT_BRIGHT } else { brand::MUTED }),
+                );
+            }
+        }
+    }
+
+    fn chrome(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::top("chrome")
             .frame(
                 egui::Frame::default()
                     .fill(brand::BG)
-                    .inner_margin(egui::Margin::symmetric(18, 14)),
+                    .inner_margin(egui::Margin::symmetric(18, 12)),
             )
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     if let Some(logo) = &self.logo {
                         ui.add(egui::Image::new(egui::load::SizedTexture::new(
                             logo.id(),
-                            egui::vec2(42.0, 42.0),
+                            egui::vec2(38.0, 38.0),
                         )));
-                        ui.add_space(4.0);
+                        ui.add_space(2.0);
                     }
                     ui.vertical(|ui| {
                         ui.label(
                             RichText::new("Pookye DM")
-                                .size(22.0)
+                                .size(19.0)
                                 .strong()
                                 .color(brand::INK),
                         );
                         ui.label(
                             RichText::new("Pookye Download Manager")
-                                .size(11.5)
+                                .size(11.0)
                                 .color(brand::ACCENT_BRIGHT),
                         );
                     });
                     ui.with_layout(
                         egui::Layout::right_to_left(egui::Align::Center),
                         |ui| {
-                            let (text, colour) = match self.bridge.port() {
-                                Some(port) => (
-                                    format!("Browser handoff 127.0.0.1:{port}"),
-                                    brand::MUTED,
-                                ),
-                                None => ("Browser handoff offline".to_string(), brand::ACCENT),
-                            };
-                            ui.label(RichText::new(text).size(11.0).color(colour));
                             ui.label(
                                 RichText::new(format!("v{}", engine::VERSION))
                                     .size(11.0)
                                     .color(brand::MUTED),
                             );
+                            ui.add_space(8.0);
+                            match self.bridge.port() {
+                                Some(port) => ui.label(
+                                    RichText::new(format!("● Browser bridge :{port}"))
+                                        .size(11.0)
+                                        .color(brand::MUTED),
+                                ),
+                                None => ui.label(
+                                    RichText::new("● Browser bridge offline")
+                                        .size(11.0)
+                                        .color(brand::ACCENT),
+                                ),
+                            };
+                            ui.add_space(8.0);
+                            if self.manager.total_speed() > 0.0 {
+                                ui.label(
+                                    RichText::new(format_speed(self.manager.total_speed()))
+                                        .size(12.5)
+                                        .strong()
+                                        .color(brand::ACCENT_BRIGHT),
+                                );
+                            }
                         },
                     );
                 });
             });
     }
 
-    fn footer(&self, ctx: &egui::Context) {
-        egui::TopBottomPanel::bottom("footer")
+    fn sidebar(&mut self, ctx: &egui::Context) {
+        egui::SidePanel::left("sidebar")
+            .resizable(false)
+            .exact_width(206.0)
+            .frame(
+                egui::Frame::default()
+                    .fill(brand::BG)
+                    .inner_margin(egui::Margin::symmetric(12, 14)),
+            )
+            .show(ctx, |ui| {
+                ui.label(RichText::new("DOWNLOADS").size(9.5).color(brand::MUTED));
+                if widgets::nav(
+                    ui,
+                    "Downloads",
+                    self.page == Page::Downloads,
+                    Some(self.manager.jobs.len()),
+                ) {
+                    self.page = Page::Downloads;
+                }
+                if widgets::nav(ui, "Speed", self.page == Page::Speed, None) {
+                    self.page = Page::Speed;
+                }
+                if widgets::nav(ui, "Networks", self.page == Page::Networks, None) {
+                    self.page = Page::Networks;
+                }
+                if widgets::nav(
+                    ui,
+                    "Schedule",
+                    self.page == Page::Schedule,
+                    Some(self.manager.queued_count()),
+                ) {
+                    self.page = Page::Schedule;
+                }
+
+                ui.add_space(14.0);
+                ui.label(RichText::new("APP").size(9.5).color(brand::MUTED));
+                if widgets::nav(ui, "Settings", self.page == Page::Settings, None) {
+                    self.page = Page::Settings;
+                }
+                if widgets::nav(ui, "About", self.page == Page::About, None) {
+                    self.page = Page::About;
+                }
+
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui.label(
+                        RichText::new(format!(
+                            "{} active · {} queued",
+                            self.manager.downloading_count(),
+                            self.manager.queued_count()
+                        ))
+                        .size(10.5)
+                        .color(brand::MUTED),
+                    );
+                    ui.label(
+                        RichText::new(format!("{} done", self.manager.completed_count()))
+                            .size(10.5)
+                            .color(brand::MUTED),
+                    );
+                });
+            });
+    }
+
+    fn status_bar(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::bottom("status")
             .frame(
                 egui::Frame::default()
                     .fill(brand::BG)
@@ -177,324 +418,42 @@ impl App {
                     let speed = self.manager.total_speed();
                     ui.label(
                         RichText::new(if speed > 0.0 {
-                            format!("{} total", format_speed(speed))
+                            format!("Average speed {}", format_speed(speed))
                         } else {
                             "Idle".to_string()
                         })
-                        .size(11.5)
+                        .size(11.0)
                         .color(brand::INK),
                     );
                     ui.label(
                         RichText::new(format!(
-                            "{} active · {} in the queue",
-                            self.manager.active_count(),
-                            self.manager.jobs.len()
-                        ))
-                        .size(11.5)
-                        .color(brand::MUTED),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(self.settings.folder.as_str())
-                                .size(11.0)
-                                .color(brand::MUTED),
-                        );
-                    });
-                });
-            });
-    }
-
-    fn new_download_card(&mut self, ui: &mut egui::Ui) {
-        egui::Frame::default()
-            .fill(brand::CARD)
-            .inner_margin(egui::Margin::same(14))
-            .show(ui, |ui| {
-                ui.label(RichText::new("New download").strong().color(brand::INK));
-                ui.add_space(2.0);
-                ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 110.0).max(140.0);
-                    let response = ui.add_sized(
-                        [width, 28.0],
-                        egui::TextEdit::singleline(&mut self.url_input)
-                            .hint_text("https://example.com/file.iso"),
-                    );
-                    let submitted = response.lost_focus()
-                        && ui.input(|input| input.key_pressed(egui::Key::Enter));
-                    let clicked = ui
-                        .add_sized(
-                            [96.0, 28.0],
-                            egui::Button::new(
-                                RichText::new("Download").strong().color(Color32::WHITE),
-                            )
-                            .fill(brand::ACCENT),
-                        )
-                        .clicked();
-                    if submitted || clicked {
-                        self.start_download();
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Save to").size(11.5).color(brand::MUTED));
-                    let response = ui.add(
-                        egui::TextEdit::singleline(&mut self.folder_edit)
-                            .desired_width(f32::INFINITY)
-                            .text_color(brand::INK),
-                    );
-                    if response.changed() {
-                        self.settings.folder = self.folder_edit.clone();
-                        self.dirty = true;
-                    }
-                });
-
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Connections")
-                            .size(11.5)
-                            .color(brand::MUTED),
-                    );
-                    if ui
-                        .add(egui::Slider::new(&mut self.settings.connections, 1..=32))
-                        .changed()
-                    {
-                        self.dirty = true;
-                    }
-                    ui.label(
-                        RichText::new(format!(
-                            "{} parallel ranges per file",
+                            "{} downloaded · {} streams per download",
+                            format_bytes(self.manager.total_downloaded()),
                             self.settings.connections
                         ))
                         .size(11.0)
                         .color(brand::MUTED),
                     );
-                });
-
-                if let Some((message, bad)) = &self.notice {
-                    ui.label(
-                        RichText::new(message)
-                            .size(11.5)
-                            .color(if *bad { brand::ACCENT_BRIGHT } else { brand::MUTED }),
-                    );
-                }
-            });
-    }
-
-    fn job_card(ui: &mut egui::Ui, job: &engine::Job, actions: &mut Vec<Action>) {
-        egui::Frame::default()
-            .fill(brand::CARD)
-            .inner_margin(egui::Margin::same(12))
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
-                            RichText::new(job.display_name())
-                                .strong()
-                                .size(14.5)
-                                .color(brand::INK),
-                        );
-                        ui.label(
-                            RichText::new(format!(
-                                "{} · {} connections",
-                                host_of(&job.url),
-                                job.connections
-                            ))
-                            .size(11.0)
-                            .color(brand::MUTED),
-                        );
-                    });
-                    ui.with_layout(
-                        egui::Layout::right_to_left(egui::Align::Center),
-                        |ui| {
-                            ui.label(
-                                RichText::new(job.status.label())
-                                    .size(11.0)
-                                    .color(status_colour(job.status)),
-                            );
-                        },
-                    );
-                });
-
-                ui.add_space(2.0);
-                let fraction = job.percent().unwrap_or(0.0);
-                ui.add(
-                    egui::ProgressBar::new(fraction)
-                        .desired_height(10.0)
-                        .fill(brand::ACCENT),
-                );
-
-                let segments = job.progress.snapshot_segments();
-                if segments.len() > 1 {
-                    let width = (ui.available_width() - (segments.len() as f32 - 1.0) * 3.0)
-                        / segments.len() as f32;
-                    ui.horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 3.0;
-                        for (length, done, _start) in &segments {
-                            let part = if *length == 0 {
-                                0.0
-                            } else {
-                                (*done as f32 / *length as f32).clamp(0.0, 1.0)
-                            };
-                            ui.add_sized(
-                                [width.max(4.0), 5.0],
-                                egui::ProgressBar::new(part)
-                                    .desired_height(5.0)
-                                    .fill(brand::ACCENT_BRIGHT),
-                            );
-                        }
-                    });
-                }
-
-                let total = job.progress.total.load(std::sync::atomic::Ordering::Relaxed);
-                let bytes = job
-                    .progress
-                    .bytes
-                    .load(std::sync::atomic::Ordering::Relaxed);
-                let mut facts = Vec::new();
-                if total > 0 {
-                    facts.push(format!(
-                        "{} of {}",
-                        format_bytes(bytes),
-                        format_bytes(total)
-                    ));
-                    facts.push(format!(
-                        "{}%",
-                        ((bytes.min(total) as f64 / total as f64) * 100.0).round() as u64
-                    ));
-                } else {
-                    facts.push(format!("{} downloaded", format_bytes(bytes)));
-                }
-                if job.status == Status::Downloading {
-                    facts.push(format_speed(job.speed));
-                    if let Some(left) = job.seconds_left() {
-                        let eta = format_eta(left);
-                        if !eta.is_empty() {
-                            facts.push(eta);
-                        }
-                    }
-                }
-                if let Some(error) = &job.error {
-                    facts.push(error.clone());
-                }
-                ui.label(
-                    RichText::new(facts.join("  ·  "))
-                        .size(11.5)
-                        .color(if job.error.is_some() {
-                            brand::ACCENT_BRIGHT
-                        } else {
-                            brand::MUTED
-                        }),
-                );
-
-                ui.horizontal(|ui| {
-                    match job.status {
-                        Status::Downloading | Status::Queued => {
-                            if ui.button("Pause").clicked() {
-                                actions.push(Action::Pause(job.id));
-                            }
-                        }
-                        Status::Paused => {
-                            if ui.button("Resume").clicked() {
-                                actions.push(Action::Resume(job.id));
-                            }
-                        }
-                        _ => {}
-                    }
-                    if job.status.is_active() && ui.button("Stop").clicked() {
-                        actions.push(Action::Cancel(job.id));
-                    }
-                    if matches!(
-                        job.status,
-                        Status::Completed | Status::Failed | Status::Cancelled
-                    ) {
-                        if ui.button("Open folder").clicked() {
-                            actions.push(Action::Open);
-                        }
-                        if ui.button("Remove").clicked() {
-                            actions.push(Action::Remove(job.id));
-                        }
-                    }
-                });
-            });
-        ui.add_space(6.0);
-    }
-
-    fn body(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default()
-            .frame(
-                egui::Frame::default()
-                    .fill(brand::PANEL)
-                    .inner_margin(egui::Margin::same(16)),
-            )
-            .show(ctx, |ui| {
-                self.new_download_card(ui);
-                ui.add_space(10.0);
-
-                let mut actions: Vec<Action> = Vec::new();
-                if self.manager.jobs.is_empty() {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(60.0);
-                        ui.label(
-                            RichText::new("Nothing downloading yet")
-                                .size(16.0)
-                                .color(brand::MUTED),
-                        );
-                        ui.label(
-                            RichText::new("Paste a link above, or let the browser extension hand one over.")
-                                .size(12.0)
+                            RichText::new(self.settings.folder.as_str())
+                                .size(10.5)
                                 .color(brand::MUTED),
                         );
                     });
-                } else {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            for job in &self.manager.jobs {
-                                Self::job_card(ui, job, &mut actions);
-                            }
-                            if !self.settings.history.is_empty() {
-                                ui.collapsing(
-                                    RichText::new(format!(
-                                        "Recent downloads ({})",
-                                        self.settings.history.len()
-                                    ))
-                                    .size(12.0)
-                                    .color(brand::MUTED),
-                                    |ui| {
-                                        for entry in self.settings.history.iter().take(12) {
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "{}  ·  {}",
-                                                    entry.file_name,
-                                                    format_bytes(entry.bytes)
-                                                ))
-                                                .size(11.0)
-                                                .color(brand::MUTED),
-                                            );
-                                        }
-                                    },
-                                );
-                            }
-                        });
-                }
-
-                for action in actions {
-                    self.apply_action(action);
-                }
+                });
             });
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        ctx.request_repaint_after(Duration::from_millis(250));
+        ctx.request_repaint_after(Duration::from_millis(200));
 
         let completed = self.manager.tick();
         for job in completed {
-            let bytes = job
-                .progress
-                .bytes
-                .load(std::sync::atomic::Ordering::Relaxed);
             let file_name = job.display_name();
+            let bytes = job.progress.bytes();
             self.settings.history.insert(
                 0,
                 store::HistoryEntry {
@@ -505,14 +464,37 @@ impl eframe::App for App {
                 },
             );
             self.settings.history.truncate(40);
-            self.history_added += 1;
             self.dirty = true;
         }
 
         self.pump_api();
-        self.header(ctx);
-        self.footer(ctx);
-        self.body(ctx);
+        self.poll_clipboard();
+        self.poll_probe();
+
+        if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+            if self.show_add {
+                self.show_add = false;
+            } else if !self.selected.is_empty() {
+                self.selected.clear();
+            }
+        }
+        if ctx.input(|input| input.modifiers.command && input.key_pressed(egui::Key::N)) {
+            self.open_add();
+        }
+
+        self.chrome(ctx);
+        self.status_bar(ctx);
+        self.sidebar(ctx);
+
+        egui::CentralPanel::default()
+            .frame(
+                egui::Frame::default()
+                    .fill(brand::PANEL)
+                    .inner_margin(egui::Margin::symmetric(18, 14)),
+            )
+            .show(ctx, |ui| pages::draw(self, ui));
+
+        dialog::draw(self, ctx);
 
         if self.dirty && self.saved_at.elapsed() > Duration::from_millis(800) {
             store::save(&self.settings);
@@ -523,43 +505,5 @@ impl eframe::App for App {
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         store::save(&self.settings);
-    }
-}
-
-fn host_of(url: &str) -> String {
-    let without_scheme = url.split("://").nth(1).unwrap_or(url);
-    without_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or(without_scheme)
-        .to_string()
-}
-
-fn status_colour(status: Status) -> Color32 {
-    match status {
-        Status::Downloading => brand::ACCENT_BRIGHT,
-        Status::Queued | Status::Paused => brand::MUTED,
-        Status::Completed => brand::INK,
-        Status::Failed => brand::ACCENT,
-        Status::Cancelled => brand::MUTED,
-    }
-}
-
-fn open_folder(folder: &str) {
-    let path = PathBuf::from(folder);
-    if !path.exists() {
-        return;
-    }
-    #[cfg(windows)]
-    {
-        let _ = std::process::Command::new("explorer").arg(&path).spawn();
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(&path).spawn();
-    }
-    #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
     }
 }
