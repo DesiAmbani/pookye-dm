@@ -24,12 +24,30 @@ async function findApp() {
   return null;
 }
 
-async function handOff(url, fileName) {
+// Cookies, referer and agent for the URL, so signed-in downloads and hotlink
+// checks behave the way they would in the browser itself.
+async function browserDetails(url, referer) {
+  const details = { userAgent: navigator.userAgent };
+  if (typeof referer === "string" && /^https?:\/\//i.test(referer)) {
+    details.referer = referer;
+  }
+  try {
+    const cookies = await chrome.cookies.getAll({ url });
+    if (cookies.length > 0) {
+      details.cookies = cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+    }
+  } catch {
+    // Cookie access is optional; the hand-off still works without it.
+  }
+  return details;
+}
+
+async function handOff(url, fileName, referer) {
   if (typeof url !== "string" || !/^https?:\/\//i.test(url)) return false;
   const port = await findApp();
   if (port === null) return false;
   try {
-    const payload = { url };
+    const payload = { url, browser: await browserDetails(url, referer) };
     if (typeof fileName === "string" && fileName) {
       payload.fileName = fileName.split(/[\\/]/).pop();
     }
@@ -40,7 +58,17 @@ async function handOff(url, fileName) {
     });
     if (!response.ok) return false;
     const body = await response.json();
-    return body && body.ok === true;
+    if (!body || body.ok !== true) return false;
+    // Browser hand-offs are held until their token is confirmed.
+    if (body.queued === false && body.token) {
+      const confirmed = await fetch(`http://127.0.0.1:${port}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: body.token }),
+      });
+      return confirmed.ok;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -62,7 +90,7 @@ async function capture(item, suggest) {
     suggest();
     return;
   }
-  const taken = await handOff(item.finalUrl || item.url, item.filename);
+  const taken = await handOff(item.finalUrl || item.url, item.filename, item.referrer);
   if (!taken) {
     suggest();
     return;
@@ -88,7 +116,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === "pookye-download-link" && info.linkUrl) {
-    void handOff(info.linkUrl);
+    void handOff(info.linkUrl, undefined, info.pageUrl);
   }
 });
 
