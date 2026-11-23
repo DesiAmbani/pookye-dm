@@ -10,9 +10,20 @@
 
 mod download;
 mod manager;
+mod video;
 
-pub use download::{probe, proxy_is_valid, ProbeInfo};
+pub use download::{proxy_is_valid, ProbeInfo};
 pub use manager::{Job, Manager};
+pub use video::{find_tools, is_video_url, INSTALL_HINT};
+
+/// Asks about a link: video pages go through yt-dlp, everything else is a HEAD.
+pub fn probe(url: &str, proxy: Option<&str>) -> Result<ProbeInfo, String> {
+    let url = url.trim();
+    if video::is_video_url(url) {
+        return video::probe(url);
+    }
+    download::probe(url, proxy)
+}
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;

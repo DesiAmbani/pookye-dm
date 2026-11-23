@@ -146,7 +146,7 @@ pub(crate) fn name_from_url(url: &str) -> Option<String> {
     }
 }
 
-fn unique_path(folder: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_path(folder: &Path, name: &str) -> PathBuf {
     let candidate = folder.join(name);
     if !candidate.exists() {
         return candidate;
@@ -254,7 +254,7 @@ fn probe_with(client: &Client, url: &str, context: &RequestContext) -> Result<Pr
     Err(format!("the server answered HTTP {}", status.as_u16()))
 }
 
-fn set_error(progress: &Progress, message: String) {
+pub(crate) fn set_error(progress: &Progress, message: String) {
     if let Ok(mut slot) = progress.outcome.lock() {
         if slot.is_none() {
             *slot = Some(Err(message));

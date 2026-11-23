@@ -237,6 +237,14 @@ limit, browser interception and per-connection telemetry — follows
 is an independent Rust implementation: the engine, UI, local API and extension were
 written from scratch for this project, with the logo's palette as the visual identity.
 
+## Videos
+
+Paste a YouTube, Vimeo, Dailymotion, TikTok, X/Twitter, Reddit, Twitch, TED, Bilibili
+or archive.org page like any other link. Pookye asks `yt-dlp` for the page, downloads
+the best picture and sound it offers, and remuxes the result into a fast-start `.mp4`
+with `ffmpeg`. Both tools are found in `tools` beside the executable first, then on
+`PATH`.
+
 ## Limitations (alpha)
 
 - Pausing is honoured between 64 KiB reads, so it is not instantaneous mid-chunk.
@@ -245,8 +253,12 @@ written from scratch for this project, with the logo's palette as the visual ide
 - Streams share one network route when no proxy is set; there is no per-adapter routing.
 - The automatic proxy mode that tests free proxies against a direct connection is not
   implemented; the proxy is used whenever it is switched on and valid.
-- No video-site support (no yt-dlp/HLS), no tray icon, no desktop notifications and no
-  auto-updater yet. Downloads finishing show an in-app notice instead.
+- Video pages need `yt-dlp` and `ffmpeg`: drop both into a `tools` folder next to
+  `pookye-dm.exe` (or install them on `PATH`). Without them the app says
+  `Downloading videos needs yt-dlp and ffmpeg. Install them with: winget install yt-dlp ffmpeg`.
+  Each video downloads over one network (no parallel streams), as in the original.
+- No tray icon, no desktop notifications and no auto-updater yet. Downloads finishing
+  show an in-app notice instead.
 - No licence/account UI and no System-wide mode: the interface and the engine cover the
   manager itself, not the commercial shell around it.
 - The extension is unpacked only; it is not published to the Chrome Web Store.

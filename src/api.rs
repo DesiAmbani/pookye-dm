@@ -20,7 +20,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Deserialize;
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
-use crate::engine::RequestContext;
+use crate::engine::{self, RequestContext};
 
 pub const PORTS: [u16; 3] = [19330, 19331, 19332];
 
@@ -296,6 +296,20 @@ pub fn spawn(bridge: Arc<Bridge>, version: String) {
                                     serde_json::json!({
                                         "ok": false,
                                         "reason": "That isn't a web link. Links start with http:// or https://."
+                                    })
+                                    .to_string(),
+                                );
+                                continue;
+                            }
+                            // A video page without the tools gets the install
+                            // hint the original shows, not a queued job.
+                            if engine::is_video_url(&add.url) && engine::find_tools().is_none() {
+                                respond(
+                                    request,
+                                    409,
+                                    serde_json::json!({
+                                        "ok": false,
+                                        "reason": engine::INSTALL_HINT
                                     })
                                     .to_string(),
                                 );

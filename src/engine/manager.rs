@@ -9,6 +9,7 @@ use std::time::Instant;
 use reqwest::blocking::Client;
 
 use super::download::{client, name_from_url, sanitize_name, supervisor};
+use super::video::{find_tools, is_video_url, INSTALL_HINT, supervisor as video_supervisor};
 use super::{now_secs, Category, Limiter, Progress, RequestContext, Status};
 
 pub struct Job {
@@ -31,6 +32,8 @@ pub struct Job {
     pub name_slot: Arc<Mutex<Option<String>>>,
     /// Browser cookies, referer and agent to replay with every request.
     pub context: RequestContext,
+    /// A video page that yt-dlp has to resolve instead of a plain file.
+    pub is_video: bool,
     pub started: bool,
     sampled_bytes: u64,
     sampled_at: Instant,
@@ -107,7 +110,12 @@ impl Manager {
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             return Err("That isn't a web link. Links start with http:// or https://.".to_string());
         }
-        if self.client.is_none() {
+        // Video pages need both tools; say the install command instead of failing later.
+        let is_video = is_video_url(&url);
+        if is_video && find_tools().is_none() {
+            return Err(INSTALL_HINT.to_string());
+        }
+        if self.client.is_none() && !is_video {
             return Err("The HTTP client isn't available.".to_string());
         }
 
@@ -121,6 +129,12 @@ impl Manager {
             .clone()
             .or_else(|| name_from_url(&url))
             .unwrap_or_else(|| "download".to_string());
+        // A page has no file name yet; yt-dlp supplies the title once it runs.
+        let name = if is_video && requested.is_none() {
+            "video.mp4".to_string()
+        } else {
+            name
+        };
 
         self.jobs.push(Job {
             id,
@@ -139,6 +153,7 @@ impl Manager {
             requested_name: requested,
             name_slot: Arc::new(Mutex::new(None)),
             context,
+            is_video,
             started: false,
             sampled_bytes: 0,
             sampled_at: Instant::now(),
@@ -149,16 +164,24 @@ impl Manager {
     }
 
     fn start(&mut self, index: usize) {
-        let Some(client) = self.client.clone() else {
+        if self.jobs[index].started || self.jobs[index].status != Status::Queued {
+            return;
+        }
+        let is_video = self.jobs[index].is_video;
+        if is_video && find_tools().is_none() {
+            let job = &mut self.jobs[index];
+            job.status = Status::Failed;
+            job.error = Some(INSTALL_HINT.to_string());
+            return;
+        }
+        let client = if is_video { None } else { self.client.clone() };
+        if !is_video && client.is_none() {
             let job = &mut self.jobs[index];
             job.status = Status::Failed;
             job.error = Some("The HTTP client isn't available.".to_string());
             return;
-        };
-        let job = &mut self.jobs[index];
-        if job.started || job.status != Status::Queued {
-            return;
         }
+        let job = &mut self.jobs[index];
         job.started = true;
         job.status = Status::Downloading;
         job.error = None;
@@ -172,14 +195,19 @@ impl Manager {
         let url = job.url.clone();
         let folder = job.folder.clone();
         let requested = job.requested_name.clone();
-        let connections = job.connections;
-        let context = job.context.clone();
-        let limiter = self.limiter.clone();
-        let handle = thread::spawn(move || {
-            supervisor(
-                client, url, folder, requested, connections, context, progress, slot, limiter,
-            )
-        });
+        let handle = if is_video {
+            thread::spawn(move || video_supervisor(url, folder, requested, progress, slot))
+        } else {
+            let connections = job.connections;
+            let context = job.context.clone();
+            let limiter = self.limiter.clone();
+            let client = client.expect("client checked above");
+            thread::spawn(move || {
+                supervisor(
+                    client, url, folder, requested, connections, context, progress, slot, limiter,
+                )
+            })
+        };
         job.worker = Some(handle);
     }
 
@@ -284,6 +312,10 @@ impl Manager {
                 .clone()
                 .or_else(|| name_from_url(&job.url))
                 .unwrap_or_else(|| "download".to_string());
+            job.is_video = is_video_url(&job.url);
+            if job.is_video && job.requested_name.is_none() {
+                job.file_name = "video.mp4".to_string();
+            }
             job.category = Category::of(&job.file_name);
         }
         self.pump();
@@ -470,6 +502,7 @@ impl Job {
             requested_name: self.requested_name.clone(),
             name_slot: self.name_slot.clone(),
             context: self.context.clone(),
+            is_video: self.is_video,
             started: self.started,
             sampled_bytes: 0,
             sampled_at: Instant::now(),
