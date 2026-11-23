@@ -235,7 +235,13 @@ impl Manager {
     pub fn pause(&mut self, id: u64) {
         if let Some(job) = self.jobs.iter_mut().find(|j| j.id == id) {
             if job.status == Status::Downloading || job.status == Status::Queued {
-                job.progress.pause.store(true, Ordering::Relaxed);
+                if job.is_video {
+                    // yt-dlp cannot be paused midway, so stop it and start over on resume.
+                    job.progress.cancel.store(true, Ordering::Relaxed);
+                    job.progress = Arc::new(Progress::new());
+                } else {
+                    job.progress.pause.store(true, Ordering::Relaxed);
+                }
                 job.status = Status::Paused;
                 job.speed = 0.0;
             }
@@ -243,18 +249,32 @@ impl Manager {
     }
 
     pub fn resume(&mut self, id: u64) {
-        if let Some(job) = self.jobs.iter_mut().find(|j| j.id == id) {
-            if job.status != Status::Paused {
-                return;
-            }
-            job.progress.pause.store(false, Ordering::Relaxed);
-            if job.started {
-                job.status = Status::Downloading;
-                job.sampled_at = Instant::now();
-                job.sampled_bytes = job.progress.bytes();
-            } else {
-                job.status = Status::Queued;
-            }
+        let Some(index) = self.jobs.iter().position(|job| job.id == id) else {
+            return;
+        };
+        if self.jobs[index].status != Status::Paused {
+            return;
+        }
+        let video = self.jobs[index].is_video;
+        if video {
+            // The stopped run left no usable state, so queue it again.
+            let job = &mut self.jobs[index];
+            job.started = false;
+            job.error = None;
+            job.status = Status::Queued;
+            job.sampled_at = Instant::now();
+            job.sampled_bytes = 0;
+            self.pump();
+            return;
+        }
+        let job = &mut self.jobs[index];
+        job.progress.pause.store(false, Ordering::Relaxed);
+        if job.started {
+            job.status = Status::Downloading;
+            job.sampled_at = Instant::now();
+            job.sampled_bytes = job.progress.bytes();
+        } else {
+            job.status = Status::Queued;
         }
         self.pump();
     }

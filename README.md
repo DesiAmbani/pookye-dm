@@ -257,6 +257,7 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
   `pookye-dm.exe` (or install them on `PATH`). Without them the app says
   `Downloading videos needs yt-dlp and ffmpeg. Install them with: winget install yt-dlp ffmpeg`.
   Each video downloads over one network (no parallel streams), as in the original.
+  Pausing a video stops it; resuming fetches that page again from the start.
 - No tray icon, no desktop notifications and no auto-updater yet. Downloads finishing
   show an in-app notice instead.
 - No licence/account UI and no System-wide mode: the interface and the engine cover the
