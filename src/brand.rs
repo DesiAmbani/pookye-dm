@@ -1,98 +1,88 @@
-//! Palette, typography, glass surfaces and the window backdrop.
+//! Palette, typography, flat surfaces and the window backdrop.
 //!
-//! Everything is translucent: the window paints one deep-maroon gradient with
-//! two soft accent lights, and each surface on top is a thin frosted sheet so
-//! that gradient glows through. The brand mark is the traced logo, embedded as
-//! a PNG so the binary stays self-contained.
+//! The interface is mostly black: solid near-black surfaces, no gradients, no
+//! frosted sheets and no drop shadows. Pink carries the remaining weight — a
+//! deep rose for buttons and selected fills, and one bright pink reserved for
+//! the primary action and the live figures. The brand mark is embedded as a PNG
+//! so the binary stays self-contained.
 
 use std::sync::Arc;
 
 use eframe::egui::{
     self, Color32, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Margin,
-    Shadow, Stroke, Vec2,
+    Stroke, Vec2,
 };
 
-/// Top of the window gradient.
-pub const BG: Color32 = Color32::from_rgb(0x1A, 0x01, 0x0F);
-/// Bottom of the window gradient.
-pub const BG_DEEP: Color32 = Color32::from_rgb(0x08, 0x00, 0x05);
-/// The crimson the logo body is built from.
-pub const ACCENT: Color32 = Color32::from_rgb(0xE8, 0x01, 0x54);
-/// The hot pink highlight of the logo.
-pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(0xFF, 0x3D, 0x7F);
+/// The window background: flat black.
+pub const BG: Color32 = Color32::from_rgb(0x0A, 0x0A, 0x0C);
+/// A flat card / panel surface: black with a hint of rose.
+pub const SURFACE: Color32 = Color32::from_rgb(0x15, 0x14, 0x16);
+/// A raised control or a tile inside a card.
+pub const SURFACE_RAISED: Color32 = Color32::from_rgb(0x1E, 0x1B, 0x1D);
+/// The secondary colour: a deep rose used for secondary buttons and selections.
+pub const ROSE: Color32 = Color32::from_rgb(0x7C, 0x2D, 0x48);
+/// A very dark rose, for selected rows and quiet fills.
+pub const ROSE_DEEP: Color32 = Color32::from_rgb(0x32, 0x17, 0x22);
+/// The bright pink: primary buttons, progress and live figures only.
+pub const ACCENT: Color32 = Color32::from_rgb(0xFF, 0x2E, 0x74);
+/// A lighter pink for text that needs to pop on black.
+pub const ACCENT_BRIGHT: Color32 = Color32::from_rgb(0xFF, 0x5C, 0x8A);
 /// Primary text.
-pub const INK: Color32 = Color32::from_rgb(0xFF, 0xF4, 0xF8);
+pub const INK: Color32 = Color32::from_rgb(0xF7, 0xF3, 0xF5);
 /// Secondary text.
-pub const MUTED: Color32 = Color32::from_rgb(0xC7, 0x9C, 0xAF);
+pub const MUTED: Color32 = Color32::from_rgb(0xC3, 0xA6, 0xB1);
 /// Tertiary text, labels and hints.
-pub const DIM: Color32 = Color32::from_rgb(0x8C, 0x60, 0x73);
+pub const DIM: Color32 = Color32::from_rgb(0x8A, 0x6E, 0x79);
 
-pub const R_CARD: u8 = 18;
-pub const R_TILE: u8 = 14;
-pub const R_PILL: u8 = 9;
-
-/// A frosted surface: barely-there white over the backdrop. Sheets are kept very
-/// thin because panels, cards and tiles stack; a strong fill on each would
-/// bleach the maroon backdrop into flat mauve.
-pub fn glass() -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 238, 245, 7)
-}
-
-/// A slightly stronger sheet, for controls resting on a card.
-pub fn glass_raised() -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 238, 245, 13)
-}
-
-/// Hairline around a glass surface.
-pub fn hairline() -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 226, 238, 26)
-}
-
-/// Soft white used for the light that catches the top edge of a surface.
-pub fn sheen(alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 245, 249, alpha)
-}
-
-pub fn shadow() -> Shadow {
-    Shadow {
-        offset: [0, 14],
-        blur: 36,
-        spread: 0,
-        color: Color32::from_black_alpha(70),
-    }
-}
+pub const R_CARD: u8 = 10;
+pub const R_TILE: u8 = 7;
+pub const R_PILL: u8 = 6;
 
 /// The standard card surface.
+pub fn glass() -> Color32 {
+    SURFACE
+}
+
+/// A raised control surface, one step above a card.
+pub fn glass_raised() -> Color32 {
+    SURFACE_RAISED
+}
+
+/// The 1 px rule drawn around flat surfaces.
+pub fn hairline() -> Color32 {
+    Color32::from_rgb(0x2B, 0x24, 0x28)
+}
+
+/// A flat pink wash, used for hover states instead of a glass sheen.
+pub fn sheen(alpha: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(255, 46, 116, (alpha as u16 * 2).min(255) as u8)
+}
+
+/// The standard card surface: flat fill, hairline, no shadow.
 pub fn card_frame() -> Frame {
     Frame::new()
         .fill(glass())
         .stroke(Stroke::new(1.0_f32, hairline()))
         .corner_radius(CornerRadius::same(R_CARD))
         .inner_margin(Margin::same(16))
-        .shadow(shadow())
 }
 
-/// A card used inside another card, without its own shadow.
+/// A card used inside another card.
 pub fn tile_frame() -> Frame {
     Frame::new()
         .fill(glass_raised())
+        .stroke(Stroke::new(1.0_f32, hairline()))
         .corner_radius(CornerRadius::same(R_TILE))
         .inner_margin(Margin::symmetric(14, 11))
 }
 
-/// The dialog surface: a taller sheet with a deeper shadow.
+/// The dialog surface: a flat sheet above the window.
 pub fn window_frame() -> Frame {
     Frame::new()
-        .fill(Color32::from_rgb(0x1C, 0x01, 0x11))
-        .stroke(Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 226, 238, 34)))
-        .corner_radius(CornerRadius::same(22))
+        .fill(SURFACE)
+        .stroke(Stroke::new(1.0_f32, hairline()))
+        .corner_radius(CornerRadius::same(R_CARD))
         .inner_margin(Margin::same(20))
-        .shadow(Shadow {
-            offset: [0, 24],
-            blur: 60,
-            spread: 0,
-            color: Color32::from_black_alpha(150),
-        })
 }
 
 pub fn semi(size: f32) -> FontId {
@@ -145,28 +135,16 @@ pub fn apply_theme(ctx: &egui::Context) {
 
     let mut visuals = egui::Visuals::dark();
     visuals.panel_fill = Color32::TRANSPARENT;
-    visuals.window_fill = Color32::from_rgb(0x1C, 0x01, 0x11);
-    visuals.extreme_bg_color = Color32::from_rgba_unmultiplied(10, 0, 6, 120);
-    visuals.faint_bg_color = glass();
+    visuals.window_fill = SURFACE;
+    visuals.extreme_bg_color = Color32::from_rgb(0x08, 0x08, 0x0A);
+    visuals.faint_bg_color = SURFACE;
     visuals.override_text_color = Some(INK);
     visuals.hyperlink_color = ACCENT_BRIGHT;
-    visuals.selection.bg_fill = Color32::from_rgba_unmultiplied(232, 1, 84, 90);
+    visuals.selection.bg_fill = ROSE;
     visuals.selection.stroke = Stroke::new(1.0_f32, INK);
     visuals.window_stroke = Stroke::new(1.0_f32, hairline());
-    visuals.window_corner_radius = CornerRadius::same(20);
-    visuals.menu_corner_radius = CornerRadius::same(14);
-    visuals.window_shadow = Shadow {
-        offset: [0, 18],
-        blur: 44,
-        spread: 0,
-        color: Color32::from_black_alpha(140),
-    };
-    visuals.popup_shadow = Shadow {
-        offset: [0, 10],
-        blur: 28,
-        spread: 0,
-        color: Color32::from_black_alpha(110),
-    };
+    visuals.window_corner_radius = CornerRadius::same(R_CARD);
+    visuals.menu_corner_radius = CornerRadius::same(R_TILE);
 
     let widgets = &mut visuals.widgets;
     widgets.noninteractive.bg_fill = Color32::TRANSPARENT;
@@ -177,13 +155,13 @@ pub fn apply_theme(ctx: &egui::Context) {
     widgets.inactive.weak_bg_fill = glass_raised();
     widgets.inactive.bg_stroke = Stroke::new(1.0_f32, hairline());
     widgets.inactive.corner_radius = CornerRadius::same(R_PILL);
-    widgets.hovered.bg_fill = Color32::from_rgba_unmultiplied(255, 240, 247, 38);
-    widgets.hovered.weak_bg_fill = Color32::from_rgba_unmultiplied(255, 240, 247, 38);
-    widgets.hovered.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 226, 238, 60));
+    widgets.hovered.bg_fill = Color32::from_rgb(0x2A, 0x1D, 0x24);
+    widgets.hovered.weak_bg_fill = Color32::from_rgb(0x2A, 0x1D, 0x24);
+    widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ROSE);
     widgets.hovered.corner_radius = CornerRadius::same(R_PILL);
-    widgets.active.bg_fill = Color32::from_rgba_unmultiplied(255, 240, 247, 52);
-    widgets.active.weak_bg_fill = Color32::from_rgba_unmultiplied(255, 240, 247, 52);
-    widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT_BRIGHT);
+    widgets.active.bg_fill = ROSE;
+    widgets.active.weak_bg_fill = ROSE;
+    widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT);
     widgets.active.corner_radius = CornerRadius::same(R_PILL);
     widgets.open.bg_fill = glass_raised();
     widgets.open.weak_bg_fill = glass_raised();
@@ -208,51 +186,10 @@ pub fn apply_theme(ctx: &egui::Context) {
     ctx.set_style(style);
 }
 
-/// Paints the window backdrop: one vertical gradient plus two accent lights.
+/// Paints the window backdrop: one flat black fill.
 pub fn paint_background(ctx: &egui::Context) {
-    let rect = ctx.screen_rect();
     let painter = ctx.layer_painter(egui::LayerId::background());
-    let mut mesh = egui::Mesh::default();
-    mesh.colored_vertex(rect.left_top(), BG);
-    mesh.colored_vertex(rect.right_top(), BG);
-    mesh.colored_vertex(rect.left_bottom(), BG_DEEP);
-    mesh.colored_vertex(rect.right_bottom(), BG_DEEP);
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 2, 3);
-    painter.add(egui::Shape::mesh(mesh));
-
-    let wide = rect.width().max(1000.0);
-    radial_glow(
-        &painter,
-        egui::pos2(rect.left() + wide * 0.72, rect.top() + rect.height() * 0.02),
-        wide * 0.42,
-        Color32::from_rgba_unmultiplied(255, 42, 120, 24),
-    );
-    radial_glow(
-        &painter,
-        egui::pos2(rect.left() + wide * 0.02, rect.bottom() + 60.0),
-        wide * 0.36,
-        Color32::from_rgba_unmultiplied(232, 1, 84, 18),
-    );
-}
-
-/// A soft light: one fan mesh, interpolated by the GPU, so the falloff is smooth.
-pub fn radial_glow(painter: &egui::Painter, center: egui::Pos2, radius: f32, color: Color32) {
-    let mut mesh = egui::Mesh::default();
-    mesh.colored_vertex(center, color);
-    let clear = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 0);
-    let steps = 48;
-    for i in 0..=steps {
-        let angle = i as f32 / steps as f32 * std::f32::consts::TAU;
-        mesh.colored_vertex(
-            center + egui::vec2(angle.cos(), angle.sin()) * radius,
-            clear,
-        );
-    }
-    for i in 1..=steps {
-        mesh.add_triangle(0, i as u32, (i % steps + 1) as u32);
-    }
-    painter.add(egui::Shape::mesh(mesh));
+    painter.rect_filled(ctx.screen_rect(), CornerRadius::ZERO, BG);
 }
 
 pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {

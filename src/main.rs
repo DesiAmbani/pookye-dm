@@ -356,12 +356,6 @@ impl App {
                 let mut left_ui = ui.new_child(egui::UiBuilder::new().max_rect(left));
                 left_ui.horizontal_centered(|ui| {
                     let (mark, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
-                    brand::radial_glow(
-                        ui.painter(),
-                        mark.center(),
-                        27.0,
-                        Color32::from_rgba_unmultiplied(255, 54, 124, 62),
-                    );
                     if let Some(logo) = &self.logo {
                         ui.painter().image(
                             logo.id(),
@@ -424,7 +418,7 @@ impl App {
                 egui::Frame::new()
                     .fill(brand::glass())
                     .stroke(Stroke::new(1.0_f32, brand::hairline()))
-                    .corner_radius(CornerRadius::same(20))
+                    .corner_radius(CornerRadius::same(brand::R_CARD))
                     .inner_margin(Margin::same(10))
                     .show(ui, |ui| {
                         ui.set_min_width(ui.available_width());
@@ -689,23 +683,17 @@ impl App {
                 };
                 egui::Frame::new()
                     .fill(Color32::from_rgba_unmultiplied(
-                        28,
-                        2,
-                        17,
-                        (218.0 * alpha) as u8,
+                        22,
+                        21,
+                        23,
+                        (228.0 * alpha) as u8,
                     ))
                     .stroke(Stroke::new(
                         1.0_f32,
-                        Color32::from_rgba_unmultiplied(255, 230, 240, (44.0 * alpha) as u8),
+                        Color32::from_rgba_unmultiplied(255, 46, 116, (110.0 * alpha) as u8),
                     ))
-                    .corner_radius(CornerRadius::same(16))
+                    .corner_radius(CornerRadius::same(brand::R_CARD))
                     .inner_margin(Margin::symmetric(18, 10))
-                    .shadow(egui::epaint::Shadow {
-                        offset: [0, 10],
-                        blur: 28,
-                        spread: 0,
-                        color: Color32::from_black_alpha((120.0 * alpha) as u8),
-                    })
                     .show(ui, |ui| {
                         ui.label(
                             RichText::new(message)
@@ -765,7 +753,7 @@ fn window_button(ui: &mut egui::Ui, glyph: WindowGlyph) -> bool {
         .animate_bool_with_time(response.id, response.hovered(), 0.12);
     let closing = matches!(glyph, WindowGlyph::Close);
     let fill = if closing {
-        brand::mix(Color32::TRANSPARENT, Color32::from_rgb(0xE8, 0x11, 0x23), hover)
+        brand::mix(Color32::TRANSPARENT, brand::ROSE, hover)
     } else {
         brand::mix(Color32::TRANSPARENT, brand::sheen(30), hover)
     };

@@ -1,7 +1,7 @@
 //! The New download dialog: link, probe result, name, folder and streams.
 //!
-//! Drawn as a frameless glass sheet over a dimmed backdrop so it reads like a
-//! native sheet sliding over the window rather than a separate OS window.
+//! Drawn as a frameless sheet over a dimmed backdrop so it reads like a panel
+//! over the window rather than a separate OS window.
 
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
@@ -40,15 +40,12 @@ impl ProbeForm {
     }
 }
 
-/// A sunken input well: dark glass with a hairline, so text sits *in* the sheet.
+/// A sunken input well: near-black with a hairline, so text sits *in* the sheet.
 fn field(ui: &mut Ui, value: &mut String, hint: &str, width: f32) -> egui::Response {
     let frame = Frame::new()
-        .fill(Color32::from_rgba_unmultiplied(6, 0, 4, 110))
-        .stroke(Stroke::new(
-            1.0_f32,
-            Color32::from_rgba_unmultiplied(255, 226, 238, 26),
-        ))
-        .corner_radius(CornerRadius::same(11))
+        .fill(Color32::from_rgb(0x0E, 0x0D, 0x0F))
+        .stroke(Stroke::new(1.0_f32, brand::hairline()))
+        .corner_radius(CornerRadius::same(brand::R_PILL))
         .inner_margin(Margin::symmetric(12, 9));
     frame
         .show(ui, |ui| {
@@ -76,7 +73,7 @@ fn close_button(ui: &mut Ui) -> bool {
     painter.circle_filled(
         rect.center(),
         13.0,
-        brand::mix(Color32::TRANSPARENT, brand::sheen(38), hover),
+        brand::mix(Color32::TRANSPARENT, brand::ROSE, hover),
     );
     let c = rect.center();
     let ink = brand::mix(brand::MUTED, brand::INK, hover);

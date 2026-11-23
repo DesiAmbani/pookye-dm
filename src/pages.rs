@@ -99,12 +99,9 @@ fn downloads(app: &mut App, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             let field_width = (ui.available_width() - 160.0).max(140.0);
             egui::Frame::new()
-                .fill(Color32::from_rgba_unmultiplied(8, 0, 5, 96))
-                .stroke(egui::Stroke::new(
-                    1.0_f32,
-                    Color32::from_rgba_unmultiplied(255, 232, 242, 26),
-                ))
-                .corner_radius(CornerRadius::same(13))
+                .fill(Color32::from_rgb(0x0E, 0x0D, 0x0F))
+                .stroke(egui::Stroke::new(1.0_f32, brand::hairline()))
+                .corner_radius(CornerRadius::same(brand::R_PILL))
                 .inner_margin(Margin::symmetric(13, 5))
                 .show(ui, |ui| {
                     let edit = ui.add_sized(
@@ -150,8 +147,9 @@ fn downloads(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
         egui::Frame::new()
-            .fill(Color32::from_rgba_unmultiplied(8, 0, 5, 80))
-            .corner_radius(CornerRadius::same(13))
+            .fill(Color32::from_rgb(0x0E, 0x0D, 0x0F))
+            .stroke(egui::Stroke::new(1.0_f32, brand::hairline()))
+            .corner_radius(CornerRadius::same(brand::R_PILL))
             .inner_margin(Margin::symmetric(12, 4))
             .show(ui, |ui| {
                 ui.add_sized(
@@ -724,8 +722,9 @@ fn settings(app: &mut App, ui: &mut egui::Ui) {
                 ui.add_space(6.0);
                 ui.label(RichText::new("Download folder").size(10.8).color(brand::DIM));
                 egui::Frame::new()
-                    .fill(Color32::from_rgba_unmultiplied(8, 0, 5, 90))
-                    .corner_radius(CornerRadius::same(11))
+                    .fill(Color32::from_rgb(0x0E, 0x0D, 0x0F))
+                    .stroke(egui::Stroke::new(1.0_f32, brand::hairline()))
+                    .corner_radius(CornerRadius::same(brand::R_PILL))
                     .inner_margin(Margin::symmetric(12, 4))
                     .show(ui, |ui| {
                         if ui

@@ -1,4 +1,4 @@
-//! Shared drawing helpers: glass cards, pills, navigation, progress and rows.
+//! Shared drawing helpers: flat cards, buttons, navigation, progress and rows.
 
 use std::path::Path;
 
@@ -86,50 +86,40 @@ pub(crate) fn pill_sized(ui: &mut Ui, label: &str, kind: Pill, min_width: f32) -
         .ctx()
         .animate_bool_with_time(response.id.with("hover"), response.hovered(), 0.13);
     let pressed = response.is_pointer_button_down_on();
-    let radius = CornerRadius::same((rect.height() * 0.5).round() as u8);
+    let radius = CornerRadius::same(brand::R_PILL);
 
-    let (fill, text) = match kind {
-        Pill::Primary => {
-            let base = brand::ACCENT;
-            let lit = brand::mix(base, Color32::from_rgb(0xFF, 0x45, 0x8A), 0.35 + hover * 0.35);
-            (
-                brand::mix(base, lit, hover),
-                brand::mix(Color32::WHITE, Color32::WHITE, 0.0),
-            )
-        }
+    // Flat fills only: bright pink for the one primary action, deep rose for a
+    // secondary one, and a borderless text button for everything else.
+    let (fill, text, border) = match kind {
+        Pill::Primary => (
+            brand::mix(brand::ACCENT, brand::ACCENT_BRIGHT, hover * 0.6),
+            Color32::from_rgb(0x12, 0x05, 0x0B),
+            None,
+        ),
         Pill::Glass => (
-            brand::mix(brand::glass_raised(), brand::sheen(46), hover),
-            brand::mix(brand::MUTED, brand::INK, hover.max(0.35)),
+            brand::mix(brand::ROSE, brand::ACCENT, hover * 0.45),
+            brand::INK,
+            None,
         ),
         Pill::Quiet => (
-            brand::mix(Color32::TRANSPARENT, brand::sheen(26), hover),
+            brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
             brand::mix(brand::MUTED, brand::INK, hover),
+            Some(brand::hairline()),
         ),
     };
 
     let painter = ui.painter();
     painter.rect_filled(rect, radius, fill);
-    if kind == Pill::Primary {
-        // Glossy top edge, the way a glass button catches the light.
-        let gloss = Rect::from_min_max(
-            rect.min + Vec2::new(1.0, 1.0),
-            Pos2::new(rect.max.x - 1.0, rect.min.y + rect.height() * 0.52),
-        );
-        painter.rect_filled(
-            gloss,
-            CornerRadius::same((gloss.height() * 0.5).round() as u8),
-            brand::sheen(38),
-        );
-    } else {
+    if let Some(colour) = border {
         painter.rect_stroke(
             rect,
             radius,
-            Stroke::new(1.0_f32, brand::hairline()),
+            Stroke::new(1.0_f32, colour),
             StrokeKind::Inside,
         );
     }
     if pressed {
-        painter.rect_filled(rect, radius, Color32::from_black_alpha(28));
+        painter.rect_filled(rect, radius, Color32::from_black_alpha(40));
     }
 
     let text_pos = rect.center() - galley.size() * 0.5;
@@ -154,25 +144,22 @@ pub(crate) fn chip(ui: &mut Ui, label: &str, active: bool) -> bool {
     let hover = ui
         .ctx()
         .animate_bool_with_time(response.id.with("h"), response.hovered(), 0.12);
-    let radius = CornerRadius::same(13);
+    let radius = CornerRadius::same(brand::R_PILL);
 
     let painter = ui.painter();
     painter.rect_filled(
         rect,
         radius,
         brand::mix(
-            brand::mix(Color32::TRANSPARENT, brand::sheen(20), hover),
-            Color32::from_rgba_unmultiplied(255, 240, 247, 44),
+            brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
+            brand::ROSE,
             t,
         ),
     );
     painter.rect_stroke(
         rect,
         radius,
-        Stroke::new(
-            1.0_f32,
-            brand::mix(brand::hairline(), Color32::from_rgba_unmultiplied(255, 236, 244, 76), t),
-        ),
+        Stroke::new(1.0_f32, brand::mix(brand::hairline(), brand::ACCENT, t)),
         StrokeKind::Inside,
     );
     let color = brand::mix(brand::mix(brand::MUTED, brand::INK, hover), brand::INK, t);
@@ -240,39 +227,13 @@ fn paint_progress(ui: &Ui, rect: Rect, id: egui::Id, fraction: f32, tint: Color3
         .animate_value_with_time(id, fraction.clamp(0.0, 1.0), 0.38);
     let radius = CornerRadius::same((rect.height() * 0.5).round() as u8);
     let painter = ui.painter();
-    painter.rect_filled(
-        rect,
-        radius,
-        Color32::from_rgba_unmultiplied(8, 0, 5, 96),
-    );
-    painter.rect_stroke(
-        rect,
-        radius,
-        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 232, 242, 16)),
-        StrokeKind::Inside,
-    );
+    painter.rect_filled(rect, radius, brand::SURFACE_RAISED);
     if value <= 0.001 {
         return;
     }
     let width = (rect.width() * value).max(rect.height());
     let fill = Rect::from_min_size(rect.min, Vec2::new(width.min(rect.width()), rect.height()));
     painter.rect_filled(fill, radius, tint);
-    let gloss = Rect::from_min_max(
-        fill.min + Vec2::new(1.0, 0.8),
-        Pos2::new(fill.max.x - 1.0, fill.center().y),
-    );
-    painter.rect_filled(
-        gloss,
-        CornerRadius::same((gloss.height() * 0.5).round() as u8),
-        brand::sheen(34),
-    );
-    if width > rect.height() * 1.4 {
-        painter.circle_filled(
-            Pos2::new(fill.right() - rect.height() * 0.5, rect.center().y),
-            (rect.height() * 0.5 - 1.2).max(0.0),
-            brand::sheen(56),
-        );
-    }
 }
 
 /// One range track: a thin, rounded bar that animates to its own share.
@@ -281,15 +242,15 @@ pub(crate) fn segment(ui: &mut Ui, id: egui::Id, fraction: f32, width: f32) {
     let value = ui
         .ctx()
         .animate_value_with_time(id, fraction.clamp(0.0, 1.0), 0.38);
-    let radius = CornerRadius::same(3);
+    let radius = CornerRadius::same(2);
     let painter = ui.painter();
-    painter.rect_filled(rect, radius, Color32::from_rgba_unmultiplied(255, 236, 244, 18));
+    painter.rect_filled(rect, radius, brand::SURFACE_RAISED);
     if value > 0.002 {
         let fill = Rect::from_min_size(
             rect.min,
             Vec2::new((rect.width() * value).max(3.0), rect.height()),
         );
-        painter.rect_filled(fill, radius, Color32::from_rgba_unmultiplied(255, 90, 150, 220));
+        painter.rect_filled(fill, radius, brand::ACCENT);
     }
 }
 
@@ -431,29 +392,21 @@ pub(crate) fn nav(ui: &mut Ui, kind: Icon, label: &str, active: bool, badge: Opt
     let hover = ui
         .ctx()
         .animate_bool_with_time(response.id.with("h"), response.hovered(), 0.12);
-    let radius = CornerRadius::same(10);
+    let radius = CornerRadius::same(brand::R_PILL);
     let painter = ui.painter();
 
     painter.rect_filled(
         rect,
         radius,
-        brand::mix(Color32::TRANSPARENT, brand::sheen(20), hover),
+        brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
     );
     if t > 0.01 {
-        painter.rect_filled(
-            rect,
-            radius,
-            Color32::from_rgba_unmultiplied(255, 240, 246, (34.0 * t) as u8),
+        painter.rect_filled(rect, radius, brand::ROSE_DEEP);
+        let bar = Rect::from_min_size(
+            Pos2::new(rect.left(), rect.center().y - 7.0),
+            Vec2::new(3.0, 14.0),
         );
-        painter.rect_stroke(
-            rect,
-            radius,
-            Stroke::new(
-                1.0_f32,
-                Color32::from_rgba_unmultiplied(255, 236, 244, (46.0 * t) as u8),
-            ),
-            StrokeKind::Inside,
-        );
+        painter.rect_filled(bar, CornerRadius::same(2), brand::ACCENT);
     }
 
     let tint = brand::mix(brand::mix(brand::MUTED, brand::INK, hover), brand::INK, t);
@@ -489,18 +442,14 @@ pub(crate) fn nav(ui: &mut Ui, kind: Icon, label: &str, active: bool, badge: Opt
             Pos2::new(rect.right() - 14.0 - size.x * 0.5, rect.center().y),
             size,
         );
-        painter.rect_filled(
-            pill,
-            CornerRadius::same(9),
-            Color32::from_rgba_unmultiplied(255, 240, 246, 26),
-        );
+        painter.rect_filled(pill, CornerRadius::same(brand::R_PILL), brand::SURFACE_RAISED);
         painter.galley(pill.center() - galley.size() * 0.5, galley, tint);
     }
 
     response.clicked()
 }
 
-/// A small iOS-style switch, animated on change.
+/// A flat toggle switch, animated on change.
 pub(crate) fn switch(ui: &mut Ui, on: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::new(34.0, 20.0), Sense::click());
     if response.hovered() {
@@ -509,26 +458,29 @@ pub(crate) fn switch(ui: &mut Ui, on: bool) -> Response {
     let t = ui
         .ctx()
         .animate_bool_with_time(response.id, on, 0.18);
+    let radius = CornerRadius::same(brand::R_PILL);
     let painter = ui.painter();
     painter.rect_filled(
         rect,
-        CornerRadius::same(10),
-        brand::mix(
-            Color32::from_rgba_unmultiplied(255, 236, 244, 22),
-            brand::ACCENT,
-            t,
-        ),
+        radius,
+        brand::mix(brand::SURFACE_RAISED, brand::ACCENT, t),
     );
     painter.rect_stroke(
         rect,
-        CornerRadius::same(10),
-        Stroke::new(1.0_f32, brand::hairline()),
+        radius,
+        Stroke::new(1.0_f32, brand::mix(brand::hairline(), brand::ACCENT, t)),
         StrokeKind::Inside,
     );
-    let knob_x = rect.left() + 10.0 + (rect.width() - 20.0) * t;
-    painter.circle_filled(
-        Pos2::new(knob_x, rect.center().y),
-        7.0,
+    let knob = Rect::from_center_size(
+        Pos2::new(
+            rect.left() + 11.0 + (rect.width() - 22.0) * t,
+            rect.center().y,
+        ),
+        Vec2::splat(12.0),
+    );
+    painter.rect_filled(
+        knob,
+        CornerRadius::same(3),
         brand::mix(brand::MUTED, Color32::WHITE, t),
     );
     response
@@ -542,7 +494,7 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
     brand::card_frame()
         .fill(brand::mix(
             brand::glass(),
-            Color32::from_rgba_unmultiplied(255, 240, 246, 26),
+            brand::ROSE_DEEP,
             if selected { 1.0 } else { 0.0 },
         ))
         .inner_margin(egui::Margin::same(15))

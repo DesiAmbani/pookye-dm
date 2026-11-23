@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.svg" alt="Pookye Download Manager" width="180" />
+<img src="assets/mark.png" alt="Pookye Download Manager" width="180" />
 
 # Pookye Download Manager
 
@@ -57,13 +57,13 @@ with a queue, per-connection telemetry and a browser handoff.
   right-clicked links to the app over a loopback API. The app hands back a token,
   the extension confirms it, and the cookies, referer and user-agent the browser
   held for the request are replayed so signed-in and hotlink-protected files work.
-- **Liquid-glass interface** — a frameless window with its own title bar and rounded
-  window edges, painted on a deep maroon gradient. Panels, cards and controls are
-  translucent sheets with hairlines and soft shadows, and hover, selection, progress
-  and page changes are animated rather than snapped.
-- **Brand-native** — the palette is sampled from the logo, and the mark ships as a
-  vector traced from the original artwork plus an embedded PNG for the window and
-  empty states. Text is set in Inter (400/500/600), bundled with the binary.
+- **Flat dark interface** — a frameless window with its own title bar and squared-off
+  window edges, painted flat black. Panels and cards are solid near-black fills with a
+  single hairline; buttons are flat rectangles with no gradients, gloss or shadows.
+- **Brand-native** — mostly black, with a deep rose for secondary controls and one
+  bright pink reserved for the primary action, progress and live figures. The mark
+  ships as an embedded PNG (with the traced `assets/logo.svg` as its vector source).
+  Text is set in Inter (400/500/600), bundled with the binary.
 
 ## Pages
 
@@ -152,19 +152,21 @@ curl -s http://127.0.0.1:19330/jobs
 
 ## Brand palette
 
-Sampled from the logo and applied throughout the UI:
+Sampled from the logo and weighted 60 / 30 / 10 across the UI:
 
 | Role | Colour |
 | --- | --- |
-| Window background, top | `#1A010F` |
-| Window background, bottom | `#080005` |
-| Glass sheet / control fill | white at 3–5% alpha |
-| Hairline | `#FFE2EE` at 10% |
-| Crimson (logo body) | `#E80154` |
-| Hot pink highlight | `#FF3D7F` |
-| Primary text | `#FFF4F8` |
-| Secondary text | `#C79CAF` |
-| Labels, hints | `#8C6073` |
+| Window background (60%) | `#0A0A0C` |
+| Card / panel surface | `#151416` |
+| Raised control / tile | `#1E1B1D` |
+| Input well | `#0E0D0F` |
+| Deep rose, secondary buttons and selections (30%) | `#7C2D48` |
+| Selected row / quiet fill | `#321722` |
+| Bright pink, primary action and live figures (10%) | `#FF2E74` |
+| Hairline | `#2B2428` |
+| Primary text | `#F7F3F5` |
+| Secondary text | `#C3A6B1` |
+| Labels, hints | `#8A6E79` |
 
 ## Project layout
 
@@ -179,9 +181,9 @@ src/engine/download.rs  probe, range workers, supervisor
 src/engine/manager.rs   jobs, queue and the manager
 src/api.rs           loopback JSON API (ping / add / jobs)
 src/store.rs         settings and history persistence
-src/brand.rs         palette, glass surfaces, backdrop, fonts, logo texture
+src/brand.rs         palette, flat surfaces, backdrop, fonts, logo texture
 assets/logo.svg      vector brand mark, traced from the original artwork
-assets/mark.png      embedded 256 px mark for the window and empty states
+assets/mark.png      embedded mark, used by the app and the README
 assets/fonts/        Inter 400/500/600, embedded into the binary
 extension/           Manifest V3 browser handoff extension
 ```
