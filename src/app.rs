@@ -82,7 +82,10 @@ impl App {
     ) -> Self {
         brand::apply_theme(&cc.egui_ctx);
         let logo = brand::load_logo(&cc.egui_ctx);
-        let manager = Manager::new(settings.max_concurrent, settings.effective_rate() / 1024);
+        let mut manager = Manager::new(settings.max_concurrent, settings.effective_rate() / 1024);
+        manager.set_proxy(settings.active_proxy().filter(|proxy| {
+            crate::engine::proxy_is_valid(proxy).is_ok()
+        }));
         let clipboard = if settings.clipboard {
             arboard::Clipboard::new().ok()
         } else {
@@ -125,6 +128,10 @@ impl App {
         self.manager
             .set_speed_limit(self.settings.effective_rate() / 1024);
         self.manager.set_max_concurrent(self.settings.max_concurrent);
+        let proxy = self.settings.active_proxy().filter(|proxy| {
+            crate::engine::proxy_is_valid(proxy).is_ok()
+        });
+        self.manager.set_proxy(proxy);
         self.dirty = true;
     }
 
@@ -182,9 +189,10 @@ impl App {
                 Some("That isn't a web link. Links start with http:// or https://.".to_string());
             return;
         }
+        let proxy = self.settings.active_proxy();
         let (tx, rx) = channel();
         std::thread::spawn(move || {
-            let _ = tx.send(engine::probe(&url));
+            let _ = tx.send(engine::probe(&url, proxy.as_deref()));
         });
         self.add.checking = true;
         self.add.rx = Some(rx);
@@ -298,9 +306,11 @@ impl eframe::App for App {
         brand::paint_background(ctx);
 
         let completed = self.manager.tick();
+        let mut finished: Vec<String> = Vec::new();
         for job in completed {
             let file_name = job.display_name();
             let bytes = job.progress.bytes();
+            finished.push(file_name.clone());
             self.settings.history.insert(
                 0,
                 store::HistoryEntry {
@@ -312,6 +322,11 @@ impl eframe::App for App {
             );
             self.settings.history.truncate(40);
             self.dirty = true;
+        }
+        match finished.len() {
+            0 => {}
+            1 => self.notify(format!("{} downloaded.", finished[0]), false),
+            count => self.notify(format!("{count} downloads finished."), false),
         }
 
         let (weekday, minute) = store::local_now();

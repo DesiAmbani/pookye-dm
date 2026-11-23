@@ -33,13 +33,15 @@ with a queue, per-connection telemetry and a browser handoff.
 - **Live telemetry** — total and per-stream speed, percentage, bytes and ETA.
 - **System-wide speed limit** — one shared bandwidth budget for every stream of every
   download, not a per-file cap.
+- **Proxy** — an HTTP, HTTPS or SOCKS5 proxy can carry the next downloads and link
+  checks; an address that isn't `scheme://host:port` is rejected before it is used.
 
 **Managing downloads**
 
 - **Queue with a concurrency limit** — only a set number of downloads run at once;
   the rest wait and start automatically as slots free up.
-- **Weekly schedule** — downloads may be limited to a time window on chosen days;
-  starts outside it wait in the queue until the window opens.
+- **Weekly schedule** — downloads may be limited to a time window on chosen days,
+  with an optional end date; starts outside it wait in the queue until the window opens.
 - **Slow mode** — one switch holds every download to a gentler cap without changing
   the configured speed limit.
 - **Categories** — Videos, Music, Documents, Programs, Archives, Other, derived from
@@ -120,6 +122,8 @@ Stored in `%APPDATA%\PookyeDM\settings.json`.
 | Segments per download | 8 | Parallel connections per file (1 = safe, no splitting) |
 | Downloads at once | 3 | Concurrent downloads (1–10) |
 | Speed limit | 0 (unlimited) | System-wide cap in KB/s |
+| Schedule | off | Weekly window, optional end date, days picked individually |
+| Proxy | off | SOCKS5 or HTTP proxy for the next downloads |
 | Clipboard watch | on | Offer copied links in the paste bar |
 
 ## Browser extension
@@ -238,9 +242,13 @@ written from scratch for this project, with the logo's palette as the visual ide
 - Pausing is honoured between 64 KiB reads, so it is not instantaneous mid-chunk.
 - Progress resumes within a session; a restarted app does not continue an interrupted
   partial file.
-- Streams share one network route. There is no proxy multiplexing or per-adapter routing.
+- Streams share one network route when no proxy is set; there is no per-adapter routing.
+- The automatic proxy mode that tests free proxies against a direct connection is not
+  implemented; the proxy is used whenever it is switched on and valid.
 - No video-site support (no yt-dlp/HLS), no tray icon, no desktop notifications and no
-  auto-updater yet.
+  auto-updater yet. Downloads finishing show an in-app notice instead.
+- No licence/account UI and no System-wide mode: the interface and the engine cover the
+  manager itself, not the commercial shell around it.
 - The extension is unpacked only; it is not published to the Chrome Web Store.
 
 ## License

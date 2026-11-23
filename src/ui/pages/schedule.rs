@@ -26,10 +26,16 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 ui.label(
                     RichText::new(if app.settings.schedule.enabled {
                         format!(
-                            "Starts {}–{} · {}",
+                            "Starts {}–{} · {}{}",
                             crate::store::clock(app.settings.schedule.start_minute),
                             crate::store::clock(app.settings.schedule.end_minute),
-                            if open { "open now" } else { "shut right now" }
+                            if open { "open now" } else { "shut right now" },
+                            app.settings
+                                .schedule
+                                .end_date
+                                .as_deref()
+                                .map(|date| format!(" · until {date}"))
+                                .unwrap_or_default()
                         )
                     } else {
                         "Downloads start as soon as they are added.".to_string()
@@ -98,6 +104,45 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                         .color(brand::DIM),
                 );
             }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Until").size(10.8).color(brand::DIM));
+                let mut until = app
+                    .settings
+                    .schedule
+                    .end_date
+                    .clone()
+                    .unwrap_or_default();
+                let response = ui.add(
+                    egui::TextEdit::singleline(&mut until)
+                        .hint_text("YYYY-MM-DD, optional")
+                        .desired_width(150.0),
+                );
+                if response.changed() {
+                    let trimmed = until.trim();
+                    app.settings.schedule.end_date = if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    };
+                    schedule_changed = true;
+                }
+                if app.settings.schedule.end_date.is_some()
+                    && pill(ui, "Clear", Pill::Quiet)
+                {
+                    app.settings.schedule.end_date = None;
+                    schedule_changed = true;
+                }
+                if let Some(date) = &app.settings.schedule.end_date {
+                    if crate::store::parse_date(date).is_none() {
+                        ui.label(
+                            RichText::new("Use YYYY-MM-DD")
+                                .size(10.2)
+                                .color(brand::ACCENT_BRIGHT),
+                        );
+                    }
+                }
+            });
         }
     });
     if schedule_changed {

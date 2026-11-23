@@ -41,6 +41,7 @@ pub struct Manager {
     pub jobs: Vec<Job>,
     next_id: u64,
     client: Option<Client>,
+    proxy: Option<String>,
     pub max_concurrent: usize,
     /// False while a schedule window is shut; queued jobs then stay queued.
     allowed: bool,
@@ -54,11 +55,22 @@ impl Manager {
         Self {
             jobs: Vec::new(),
             next_id: 1,
-            client: client().ok(),
+            client: client(None).ok(),
+            proxy: None,
             max_concurrent: max_concurrent.clamp(1, 10),
             allowed: true,
             limiter,
         }
+    }
+
+    /// Sets the proxy used by downloads started from now on. Running jobs keep
+    /// the connection they were built with, like the original's "next downloads".
+    pub fn set_proxy(&mut self, proxy: Option<String>) {
+        if self.proxy == proxy {
+            return;
+        }
+        self.client = client(proxy.as_deref()).ok();
+        self.proxy = proxy;
     }
 
     /// Opens or shuts the start gate used by the weekly schedule.

@@ -161,6 +161,62 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 });
             });
 
+            ui.add_space(10.0);
+            card(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.label(
+                            RichText::new("Proxy")
+                                .font(brand::medium(13.5))
+                                .color(brand::INK),
+                        );
+                        ui.label(
+                            RichText::new(
+                                "Your own SOCKS5 or HTTP proxy, for the next downloads. Everything goes through it, so use one you trust.",
+                            )
+                            .size(10.4)
+                            .color(brand::DIM),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::switch(ui, app.settings.proxy_on).clicked() {
+                            app.settings.proxy_on = !app.settings.proxy_on;
+                            changed = true;
+                        }
+                    });
+                });
+                if app.settings.proxy_on {
+                    ui.add_space(6.0);
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(0x0E, 0x0D, 0x0F))
+                        .stroke(egui::Stroke::new(1.0_f32, brand::hairline()))
+                        .corner_radius(CornerRadius::same(brand::R_PILL))
+                        .inner_margin(Margin::symmetric(12, 4))
+                        .show(ui, |ui| {
+                            if ui
+                                .add(
+                                    egui::TextEdit::singleline(&mut app.settings.proxy)
+                                        .frame(false)
+                                        .hint_text("socks5://10.0.0.1:1080")
+                                        .desired_width(f32::INFINITY),
+                                )
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        });
+                    let (line, colour) = match engine::proxy_is_valid(&app.settings.proxy) {
+                        Ok(()) => (
+                            "Downloads start through this proxy.".to_string(),
+                            brand::DIM,
+                        ),
+                        Err(message) => (message, brand::ACCENT_BRIGHT),
+                    };
+                    ui.label(RichText::new(line).size(10.2).color(colour));
+                }
+            });
+
             if changed {
                 app.apply_limits();
             }

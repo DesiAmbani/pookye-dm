@@ -16,13 +16,43 @@ use super::{
     USER_AGENT_VALUE,
 };
 
-pub(crate) fn client() -> Result<Client, String> {
-    Client::builder()
+pub(crate) fn client(proxy: Option<&str>) -> Result<Client, String> {
+    let mut builder = Client::builder()
         .user_agent(USER_AGENT_VALUE)
         .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(120))
+        .timeout(Duration::from_secs(120));
+    if let Some(proxy) = proxy.map(str::trim).filter(|proxy| !proxy.is_empty()) {
+        let proxy = reqwest::Proxy::all(proxy)
+            .map_err(|e| format!("that proxy couldn't be used: {e}"))?;
+        builder = builder.proxy(proxy);
+    }
+    builder
         .build()
         .map_err(|e| format!("could not start the HTTP client: {e}"))
+}
+
+/// Checks a proxy like the original does: a scheme, a host and a port.
+pub fn proxy_is_valid(raw: &str) -> Result<(), String> {
+    const HINT: &str = "That isn't a proxy like socks5://10.0.0.1:1080.";
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err("Enter a proxy first, like socks5://10.0.0.1:1080.".to_string());
+    }
+    let Some((scheme, rest)) = raw.split_once("://") else {
+        return Err(HINT.to_string());
+    };
+    let scheme = scheme.to_ascii_lowercase();
+    if !matches!(scheme.as_str(), "http" | "https" | "socks5" | "socks5h") {
+        return Err(HINT.to_string());
+    }
+    let authority = rest.split('/').next().unwrap_or("");
+    let Some((host, port)) = authority.rsplit_once(':') else {
+        return Err(HINT.to_string());
+    };
+    if host.trim().is_empty() || port.parse::<u16>().is_err() {
+        return Err(HINT.to_string());
+    }
+    Ok(())
 }
 
 /// A GET that carries whatever the browser told us about the request.
@@ -156,12 +186,12 @@ struct Probe {
 }
 
 /// Asks the server for the size, name and range support of a link.
-pub fn probe(url: &str) -> Result<ProbeInfo, String> {
+pub fn probe(url: &str, proxy: Option<&str>) -> Result<ProbeInfo, String> {
     let url = url.trim();
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return Err("That isn't a web link. Links start with http:// or https://.".to_string());
     }
-    let client = client()?;
+    let client = client(proxy)?;
     let info = probe_with(&client, url, &RequestContext::default())?;
     Ok(ProbeInfo {
         total: info.total,

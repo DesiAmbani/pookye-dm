@@ -11,7 +11,7 @@
 mod download;
 mod manager;
 
-pub use download::{probe, ProbeInfo};
+pub use download::{probe, proxy_is_valid, ProbeInfo};
 pub use manager::{Job, Manager};
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

@@ -60,10 +60,21 @@ impl Default for Schedule {
 
 impl Schedule {
     /// Whether a download may start at `weekday` (0 = Sunday) and `minute`.
-    /// A window with the same start and end is open all day.
+    /// A window with the same start and end is open all day, and an `end_date`
+    /// (`YYYY-MM-DD`) closes the window once that day has passed.
     pub fn allows(&self, weekday: u8, minute: u32) -> bool {
+        self.allows_on(weekday, minute, local_date())
+    }
+
+    /// The same check against an explicit date, so it can be tested.
+    pub fn allows_on(&self, weekday: u8, minute: u32, today: (i32, u16, u16)) -> bool {
         if !self.enabled || self.days.is_empty() {
             return true;
+        }
+        if let Some(end) = self.end_date.as_deref().and_then(parse_date) {
+            if today > end {
+                return false;
+            }
         }
         if !self.days.contains(&weekday) {
             return false;
@@ -79,15 +90,27 @@ impl Schedule {
     }
 }
 
+/// Parses a `YYYY-MM-DD` date into a comparable `(year, month, day)`.
+pub fn parse_date(text: &str) -> Option<(i32, u16, u16)> {
+    let mut parts = text.trim().split('-');
+    let year = parts.next()?.parse::<i32>().ok()?;
+    let month = parts.next()?.parse::<u16>().ok()?;
+    let day = parts.next()?.parse::<u16>().ok()?;
+    if parts.next().is_some() || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    Some((year, month, day))
+}
+
 /// Formats a minute of the day as `HH:MM`.
 pub fn clock(minute: u32) -> String {
     let minute = minute % (24 * 60);
     format!("{:02}:{:02}", minute / 60, minute % 60)
 }
 
-/// The computer's local weekday (0 = Sunday) and minute of the day.
+/// Local weekday (0 = Sunday), minute of the day and date in one read.
 #[cfg(windows)]
-pub fn local_now() -> (u8, u32) {
+fn local_parts() -> (u8, u32, i32, u16, u16) {
     #[repr(C)]
     struct LocalTime {
         year: u16,
@@ -116,20 +139,47 @@ pub fn local_now() -> (u8, u32) {
     (
         (time.day_of_week % 7) as u8,
         time.hour as u32 * 60 + time.minute as u32,
+        time.year as i32,
+        time.month,
+        time.day,
     )
 }
 
 /// UTC fallback for platforms without a local-time call.
 #[cfg(not(windows))]
-pub fn local_now() -> (u8, u32) {
+fn local_parts() -> (u8, u32, i32, u16, u16) {
     let seconds = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let days = seconds / 86_400;
+    let days = (seconds / 86_400) as i64;
     let minute = ((seconds % 86_400) / 60) as u32;
     // 1970-01-01 was a Thursday.
-    (((days + 4) % 7) as u8, minute)
+    let weekday = ((days + 4).rem_euclid(7)) as u8;
+    // Howard Hinnant's civil_from_days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+    (weekday, minute, year as i32, month as u16, day as u16)
+}
+
+/// The computer's local weekday (0 = Sunday) and minute of the day.
+pub fn local_now() -> (u8, u32) {
+    let (weekday, minute, _, _, _) = local_parts();
+    (weekday, minute)
+}
+
+/// The computer's local date as `(year, month, day)`.
+pub fn local_date() -> (i32, u16, u16) {
+    let (_, _, year, month, day) = local_parts();
+    (year, month, day)
 }
 
 fn default_folder() -> String {
@@ -249,6 +299,15 @@ impl Settings {
             (hard, slow) => hard.min(slow),
         }
     }
+
+    /// The proxy the engine should use: only when switched on and usable.
+    pub fn active_proxy(&self) -> Option<String> {
+        if !self.proxy_on {
+            return None;
+        }
+        let proxy = self.proxy.trim();
+        (!proxy.is_empty()).then(|| proxy.to_string())
+    }
 }
 
 pub fn default_download_folder() -> PathBuf {
@@ -299,5 +358,38 @@ pub fn save(settings: &Settings) {
     }
     if let Ok(text) = serde_json::to_string_pretty(settings) {
         let _ = std::fs::write(path, text);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_end_date_closes_the_window_after_that_day() {
+        let schedule = Schedule {
+            enabled: true,
+            start_minute: 0,
+            end_minute: 0,
+            days: (0..7).collect(),
+            end_date: Some("2026-11-24".to_string()),
+            ..Schedule::default()
+        };
+        assert!(schedule.allows_on(1, 600, (2026, 11, 24)));
+        assert!(!schedule.allows_on(1, 600, (2026, 11, 25)));
+    }
+
+    #[test]
+    fn a_window_that_crosses_midnight_stays_open() {
+        let schedule = Schedule {
+            enabled: true,
+            start_minute: 22 * 60,
+            end_minute: 6 * 60,
+            days: (0..7).collect(),
+            ..Schedule::default()
+        };
+        assert!(schedule.allows_on(1, 23 * 60, (2026, 11, 24)));
+        assert!(schedule.allows_on(1, 5 * 60, (2026, 11, 24)));
+        assert!(!schedule.allows_on(1, 12 * 60, (2026, 11, 24)));
     }
 }
