@@ -258,8 +258,15 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
   `Downloading videos needs yt-dlp and ffmpeg. Install them with: winget install yt-dlp ffmpeg`.
   Each video downloads over one network (no parallel streams), as in the original.
   Pausing a video stops it; resuming fetches that page again from the start.
-- No tray icon, no desktop notifications and no auto-updater yet. Downloads finishing
-  show an in-app notice instead.
+- Close to the tray keeps only the notification-area icon: the window is moved
+  off-screen rather than destroyed, so downloads and the browser bridge keep running.
+  Left-click the icon to bring the window back; right-click for *Open Pookye DM* and
+  *Quit Pookye DM*. With the setting off, closing quits as before.
+- No desktop notifications and no auto-updater yet. Downloads finishing show an
+  in-app notice instead.
+- The window is a fixed 1160×700 for now: a frameless window that is also resizable
+  gets a native frame winit does not account for, which shifted and clipped the drawn
+  interface.
 - No licence/account UI and no System-wide mode: the interface and the engine cover the
   manager itself, not the commercial shell around it.
 - The extension is unpacked only; it is not published to the Chrome Web Store.

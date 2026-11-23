@@ -6,6 +6,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
     page_heading(ui, "Settings", "Where downloads go and how hard they push.");
     ui.add_space(14.0);
     let mut changed = false;
+    let mut tray_changed = false;
 
     egui::ScrollArea::vertical()
         .auto_shrink([false, false])
@@ -133,6 +134,33 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                         .color(brand::INK),
                 );
                 ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.spacing_mut().item_spacing.y = 2.0;
+                        ui.label(
+                            RichText::new("Close to the tray")
+                                .font(brand::medium(12.0))
+                                .color(brand::INK),
+                        );
+                        ui.label(
+                            RichText::new(
+                                "Closing the window hides it, and downloads plus the browser bridge keep running.",
+                            )
+                            .size(10.2)
+                            .color(brand::DIM),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if w::switch(ui, app.settings.close_to_tray).clicked() {
+                            app.settings.close_to_tray = !app.settings.close_to_tray;
+                            tray_changed = true;
+                            changed = true;
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+                w::divider(ui);
+                ui.add_space(6.0);
                 if ui
                     .checkbox(
                         &mut app.settings.clipboard,
@@ -219,6 +247,9 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
 
             if changed {
                 app.apply_limits();
+            }
+            if tray_changed {
+                app.sync_tray();
             }
             ui.add_space(8.0);
             ui.label(

@@ -6,7 +6,7 @@ use std::sync::mpsc::{channel, TryRecvError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use eframe::egui::{self, Color32, CornerRadius, Margin, Stroke};
+use eframe::egui::{self, Color32, Margin};
 
 use crate::dialog::ProbeForm;
 use crate::engine::{self, Manager, Status};
@@ -59,7 +59,6 @@ pub(crate) struct App {
     pub(crate) bridge: Arc<api::Bridge>,
     pub(crate) logo: Option<egui::TextureHandle>,
     pub(crate) page: Page,
-    page_started: Instant,
     pub(crate) url_input: String,
     pub(crate) search: String,
     pub(crate) filter: Filter,
@@ -72,6 +71,15 @@ pub(crate) struct App {
     pub(crate) clipboard: Option<arboard::Clipboard>,
     clipboard_checked: Instant,
     last_clipboard: String,
+    /// The notification-area icon, present while the window may close to it.
+    pub(crate) tray: Option<crate::tray::Tray>,
+    /// True while only the tray icon is visible; downloads keep running.
+    pub(crate) hidden: bool,
+    /// The OS window, parked off-screen while hidden.
+    window: Option<crate::tray::AppWindow>,
+    parked_at: Option<(i32, i32)>,
+    /// Set when the tray asked to quit, so the close request is not caught.
+    quitting: bool,
 }
 
 impl App {
@@ -91,6 +99,12 @@ impl App {
         } else {
             None
         };
+        let tray = if settings.close_to_tray {
+            crate::tray::Tray::new()
+        } else {
+            None
+        };
+        let window = crate::tray::AppWindow::find();
         Self {
             manager,
             add: ProbeForm::new(&settings),
@@ -98,7 +112,6 @@ impl App {
             bridge,
             logo,
             page: Page::Downloads,
-            page_started: Instant::now(),
             url_input: String::new(),
             search: String::new(),
             filter: Filter::All,
@@ -110,6 +123,11 @@ impl App {
             clipboard,
             clipboard_checked: Instant::now(),
             last_clipboard: String::new(),
+            tray,
+            hidden: false,
+            window,
+            parked_at: None,
+            quitting: false,
         }
     }
 
@@ -118,9 +136,71 @@ impl App {
     }
 
     pub(crate) fn go(&mut self, page: Page) {
-        if self.page != page {
-            self.page = page;
-            self.page_started = Instant::now();
+        self.page = page;
+    }
+
+    /// Creates or drops the tray icon to match the setting.
+    pub(crate) fn sync_tray(&mut self) {
+        if self.settings.close_to_tray {
+            if self.tray.is_none() {
+                self.tray = crate::tray::Tray::new();
+                if self.tray.is_none() {
+                    self.notify("The tray icon could not be created here.", true);
+                }
+            }
+        } else {
+            self.tray = None;
+        }
+    }
+
+    /// A close hides the window when the setting asks for the tray.
+    fn handle_close(&mut self, ctx: &egui::Context) {
+        if self.quitting || !self.settings.close_to_tray {
+            return;
+        }
+        if !ctx.input(|input| input.viewport().close_requested()) {
+            return;
+        }
+        self.sync_tray();
+        if self.tray.is_none() {
+            // Without an icon there would be no way back, so let it close.
+            return;
+        }
+        if self.window.is_none() {
+            self.window = crate::tray::AppWindow::find();
+        }
+        let Some(window) = self.window.as_ref() else {
+            self.notify("This window couldn't be tucked away.", true);
+            return;
+        };
+        ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        // Parked, not hidden: a hidden winit window stops drawing, and the
+        // frame that draws is also the frame that pumps the queue.
+        self.parked_at = window.park();
+        self.hidden = true;
+    }
+
+    /// Answers the tray icon: show the window again, or leave for good.
+    fn handle_tray(&mut self, ctx: &egui::Context) {
+        match crate::tray::poll() {
+            Some(crate::tray::TrayEvent::Show) => {
+                self.hidden = false;
+                if self.window.is_none() {
+                    self.window = crate::tray::AppWindow::find();
+                }
+                match self.window.as_ref() {
+                    Some(window) => window.restore(self.parked_at.take()),
+                    None => {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+                    }
+                }
+            }
+            Some(crate::tray::TrayEvent::Quit) => {
+                self.quitting = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            None => {}
         }
     }
 
@@ -302,7 +382,8 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(120));
-        Self::resize_edges(ctx);
+        self.handle_tray(ctx);
+        self.handle_close(ctx);
         brand::paint_background(ctx);
 
         let completed = self.manager.tick();
@@ -337,6 +418,16 @@ impl eframe::App for App {
         self.poll_clipboard();
         self.poll_probe();
 
+        if self.hidden {
+            // Nothing is drawn, but the queue, the workers and the bridge run.
+            if self.dirty && self.saved_at.elapsed() > Duration::from_millis(800) {
+                store::save(&self.settings);
+                self.dirty = false;
+                self.saved_at = Instant::now();
+            }
+            return;
+        }
+
         if ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
             if self.show_add {
                 self.show_add = false;
@@ -356,46 +447,18 @@ impl eframe::App for App {
             .frame(
                 egui::Frame::new()
                     .inner_margin(Margin {
-                        left: 4,
-                        right: 18,
-                        top: 2,
-                        bottom: 6,
+                        left: brand::PAGE_PAD,
+                        right: brand::PAGE_PAD,
+                        top: 14,
+                        bottom: 12,
                     })
                     .fill(Color32::TRANSPARENT),
             )
-            .show(ctx, |ui| {
-                let height = ui.available_height();
-                egui::Frame::new()
-                    .fill(brand::glass())
-                    .stroke(Stroke::new(1.0_f32, brand::hairline()))
-                    .corner_radius(CornerRadius::same(22))
-                    .inner_margin(Margin::same(22))
-                    .show(ui, |ui| {
-                        ui.set_min_width(ui.available_width());
-                        ui.set_min_height(height - 8.0);
-                        pages::draw(self, ui);
-                    });
-            });
-
-        // A short fade when the page changes.
-        let age = self.page_started.elapsed().as_secs_f32();
-        if age < 0.18 {
-            let alpha = (1.0 - age / 0.18).clamp(0.0, 1.0);
-            let rect = ctx.available_rect();
-            ctx.layer_painter(egui::LayerId::new(
-                egui::Order::Foreground,
-                egui::Id::new("page-fade"),
-            ))
-            .rect_filled(
-                rect,
-                CornerRadius::same(22),
-                Color32::from_rgba_unmultiplied(0x12, 0x00, 0x0A, (alpha * 210.0) as u8),
-            );
-            ctx.request_repaint();
-        }
+            .show(ctx, |ui| pages::draw(self, ui));
 
         dialog::draw(self, ctx);
         self.toast(ctx);
+
 
         if self.dirty && self.saved_at.elapsed() > Duration::from_millis(800) {
             store::save(&self.settings);

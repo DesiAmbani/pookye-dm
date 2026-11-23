@@ -5,24 +5,22 @@ use super::prelude::*;
 impl App {
     pub(crate) fn status_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::bottom("status")
-            .exact_height(38.0)
-            .frame(
-                egui::Frame::new()
-                    .inner_margin(Margin {
-                        left: 22,
-                        right: 22,
-                        top: 4,
-                        bottom: 10,
-                    })
-                    .fill(Color32::TRANSPARENT),
-            )
+            .exact_height(brand::STATUS_H)
+            .frame(egui::Frame::new().fill(brand::PANEL))
             .show(ctx, |ui| {
+                let bar = ui.max_rect();
+                ui.painter().hline(
+                    bar.x_range(),
+                    bar.top() + 0.5,
+                    Stroke::new(1.0_f32, brand::hairline()),
+                );
                 ui.horizontal_centered(|ui| {
+                    ui.add_space(18.0);
                     let speed = self.manager.total_speed();
-                    let (dot, _) = ui.allocate_exact_size(Vec2::splat(8.0), Sense::hover());
+                    let (dot, _) = ui.allocate_exact_size(Vec2::splat(7.0), Sense::hover());
                     ui.painter().circle_filled(
                         dot.center(),
-                        3.0,
+                        2.6,
                         if speed > 0.0 {
                             brand::ACCENT_BRIGHT
                         } else {
@@ -35,7 +33,7 @@ impl App {
                         } else {
                             "Idle".to_string()
                         })
-                        .size(10.8)
+                        .size(10.6)
                         .color(brand::MUTED),
                     );
                     ui.label(
@@ -44,30 +42,21 @@ impl App {
                             format_bytes(self.manager.total_downloaded()),
                             self.settings.connections
                         ))
-                        .size(10.8)
+                        .size(10.6)
                         .color(brand::DIM),
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.add_space(18.0);
                         let awaiting = self.bridge.awaiting_count();
-                        match self.bridge.port() {
-                            Some(port) if awaiting > 0 => ui.label(
-                                RichText::new(format!(
-                                    "Browser bridge · {port} · {awaiting} to confirm"
-                                ))
-                                .size(10.2)
-                                .color(brand::DIM),
-                            ),
-                            Some(port) => ui.label(
-                                RichText::new(format!("Browser bridge · {port}"))
-                                    .size(10.2)
-                                    .color(brand::DIM),
-                            ),
-                            None => ui.label(
-                                RichText::new("Browser bridge offline")
-                                    .size(10.2)
-                                    .color(brand::DIM),
-                            ),
+                        let bridge = match self.bridge.port() {
+                            Some(port) if awaiting > 0 => {
+                                format!("Browser bridge · {port} · {awaiting} to confirm")
+                            }
+                            Some(port) => format!("Browser bridge · {port}"),
+                            None => "Browser bridge offline".to_string(),
                         };
+                        ui.label(RichText::new(bridge).size(10.2).color(brand::DIM));
+                        ui.add_space(12.0);
                         ui.label(
                             RichText::new(self.settings.folder.as_str())
                                 .size(10.2)

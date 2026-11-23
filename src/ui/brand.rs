@@ -14,7 +14,7 @@ use eframe::egui::{
 };
 
 /// The window background: flat black.
-pub const BG: Color32 = Color32::from_rgb(0x0A, 0x0A, 0x0C);
+pub const BG: Color32 = Color32::BLACK;
 /// A flat card / panel surface: black with a hint of rose.
 pub const SURFACE: Color32 = Color32::from_rgb(0x15, 0x14, 0x16);
 /// A raised control or a tile inside a card.
@@ -34,6 +34,15 @@ pub const MUTED: Color32 = Color32::from_rgb(0xC3, 0xA6, 0xB1);
 /// Tertiary text, labels and hints.
 pub const DIM: Color32 = Color32::from_rgb(0x8A, 0x6E, 0x79);
 
+/// The sidebar and status bar: one step off the background, edge to edge.
+pub const PANEL: Color32 = Color32::from_rgb(0x11, 0x10, 0x12);
+
+/// One set of window metrics, so every bar and page lines up.
+pub const TITLE_H: f32 = 48.0;
+pub const SIDEBAR_W: f32 = 220.0;
+pub const STATUS_H: f32 = 32.0;
+pub const PAGE_PAD: i8 = 26;
+
 pub const R_CARD: u8 = 10;
 pub const R_TILE: u8 = 7;
 pub const R_PILL: u8 = 6;
@@ -51,11 +60,6 @@ pub fn glass_raised() -> Color32 {
 /// The 1 px rule drawn around flat surfaces.
 pub fn hairline() -> Color32 {
     Color32::from_rgb(0x2B, 0x24, 0x28)
-}
-
-/// A flat pink wash, used for hover states instead of a glass sheen.
-pub fn sheen(alpha: u8) -> Color32 {
-    Color32::from_rgba_unmultiplied(255, 46, 116, (alpha as u16 * 2).min(255) as u8)
 }
 
 /// The standard card surface: flat fill, hairline, no shadow.
@@ -201,6 +205,18 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
         lerp(a.b(), b.b()),
         lerp(a.a(), b.a()),
     )
+}
+
+/// The mark as the window and taskbar icon.
+pub fn window_icon() -> Option<egui::IconData> {
+    let image = image::load_from_memory(include_bytes!("../../assets/mark.png"))
+        .ok()?
+        .to_rgba8();
+    Some(egui::IconData {
+        rgba: image.as_raw().clone(),
+        width: image.width(),
+        height: image.height(),
+    })
 }
 
 /// Rasterises the traced brand mark from the embedded PNG.

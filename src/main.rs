@@ -9,6 +9,7 @@ mod api;
 mod app;
 mod engine;
 mod store;
+mod tray;
 mod ui;
 
 pub(crate) use app::{App, Filter, Page};
@@ -23,12 +24,22 @@ fn main() -> eframe::Result {
     let bridge = Arc::new(api::Bridge::new());
     api::spawn(bridge.clone(), engine::VERSION.to_string());
 
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([1160.0, 700.0])
+        .with_decorations(false)
+        // A resizable frameless window gets a native frame that winit does not
+        // account for, which shifts and clips the drawn surface. A fixed size
+        // keeps the whole interface inside the window.
+        .with_resizable(false)
+        .with_title("Pookye Download Manager");
+    if let Some(icon) = brand::window_icon() {
+        viewport = viewport.with_icon(icon);
+    }
+
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1220.0, 800.0])
-            .with_min_inner_size([960.0, 640.0])
-            .with_decorations(false)
-            .with_title("Pookye Download Manager"),
+        viewport,
+        // A window parked off-screen must not be restored there next launch.
+        persist_window: false,
         ..Default::default()
     };
 
