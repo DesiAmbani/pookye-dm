@@ -88,6 +88,12 @@ cargo build --release
 ./target/release/pookye-dm
 ```
 
+### Opening it on Windows
+
+Double-click **`Run Pookye DM.cmd`** in the project folder. The first run builds
+the release binary (a minute or two); after that the launcher opens
+`targetelease\pookye-dm.exe` straight away. No terminal needed.
+
 The binary is self-contained: the logo is embedded as `assets/mark.png`, the Inter
 faces as `assets/fonts/*.ttf`, and the window needs no decorations or external theme.
 
@@ -170,23 +176,54 @@ Sampled from the logo and weighted 60 / 30 / 10 across the UI:
 
 ## Project layout
 
+Every screen, widget and piece of state lives in its own small module, so a change
+or a fix touches one file instead of a thousand-line one:
+
 ```
-src/main.rs          app shell: window, sidebar, header, status bar, update loop
-src/pages.rs         Downloads, Speed, Networks, Schedule, Settings, About
-src/dialog.rs        New download dialog and link probing
-src/widgets.rs       Cards, chips, navigation, download rows, file actions
-src/actions.rs       Row and batch actions applied after drawing
-src/engine/mod.rs    shared types, palette-independent formatting, rate limiter
-src/engine/download.rs  probe, range workers, supervisor
-src/engine/manager.rs   jobs, queue and the manager
-src/api.rs           loopback JSON API (ping / add / jobs)
-src/store.rs         settings and history persistence
-src/brand.rs         palette, flat surfaces, backdrop, fonts, logo texture
-assets/logo.svg      vector brand mark, traced from the original artwork
-assets/mark.png      embedded mark, used by the app and the README
-assets/fonts/        Inter 400/500/600, embedded into the binary
-extension/           Manifest V3 browser handoff extension
+src/main.rs                 entry point: declares the modules and opens the window
+src/app.rs                  App state: settings, manager, selection, shortcuts, frame loop
+
+src/ui/brand.rs             palette, flat surfaces, fonts, backdrop, logo texture
+src/ui/dialog.rs            New download sheet and link probing
+src/ui/pages/mod.rs         page dispatch
+src/ui/pages/downloads.rs   paste bar, filters, batch actions, rows
+src/ui/pages/speed.rs       system-wide limit and per-download share
+src/ui/pages/networks.rs    per-connection range traffic
+src/ui/pages/schedule.rs    weekly window and the waiting queue
+src/ui/pages/settings.rs    folder, segments, concurrency, slow mode
+src/ui/pages/about.rs       version, licence, lineage
+
+src/ui/widgets/surfaces.rs  cards, tiles, headings, metrics, rules
+src/ui/widgets/controls.rs  buttons, chips, round check
+src/ui/widgets/bars.rs      progress bars and per-stream tracks
+src/ui/widgets/icons.rs     line icons
+src/ui/widgets/navigation.rs  sidebar rows and the toggle switch
+src/ui/widgets/rows.rs      the download row
+src/ui/widgets/files.rs     host names, reveal in folder, open a file
+
+src/ui/shell/titlebar.rs    custom title bar, drag region, window controls
+src/ui/shell/sidebar.rs     new download, filters, pages, slow-mode switch
+src/ui/shell/status_bar.rs  speed, totals, folder, bridge port
+src/ui/shell/toast.rs       transient notices
+src/ui/shell/resize.rs      resize edges for the frameless window
+
+src/engine/mod.rs           shared types, formatting, rate limiter
+src/engine/download.rs      probe, range workers, supervisor
+src/engine/manager.rs       jobs, queue and the manager
+src/api.rs                  loopback JSON API (ping / add / confirm / jobs)
+src/store.rs                settings and history persistence
+src/actions.rs              row and batch actions applied after drawing
+
+assets/logo.svg             vector brand mark, traced from the original artwork
+assets/mark.png             embedded mark, used by the app and the README
+assets/fonts/               Inter 400/500/600, embedded into the binary
+extension/                  Manifest V3 browser handoff extension
+Run Pookye DM.cmd           double-click launcher for Windows
 ```
+
+Rust compiles the whole crate as one unit, so a syntax error still fails the
+build — but each module has one job and a small surface, so a broken page, widget
+or shell piece is a one-file fix rather than a hunt through a monolith.
 
 ## Lineage
 

@@ -98,15 +98,15 @@ fn install_fonts(ctx: &egui::Context) {
     let faces = [
         (
             "inter",
-            include_bytes!("../assets/fonts/Inter_400Regular.ttf").as_slice(),
+            include_bytes!("../../assets/fonts/Inter_400Regular.ttf").as_slice(),
         ),
         (
             "inter-medium",
-            include_bytes!("../assets/fonts/Inter_500Medium.ttf").as_slice(),
+            include_bytes!("../../assets/fonts/Inter_500Medium.ttf").as_slice(),
         ),
         (
             "inter-semibold",
-            include_bytes!("../assets/fonts/Inter_600SemiBold.ttf").as_slice(),
+            include_bytes!("../../assets/fonts/Inter_600SemiBold.ttf").as_slice(),
         ),
     ];
     for (name, bytes) in faces {
@@ -205,7 +205,7 @@ pub fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
 
 /// Rasterises the traced brand mark from the embedded PNG.
 pub fn load_logo(ctx: &egui::Context) -> Option<egui::TextureHandle> {
-    let bytes = include_bytes!("../assets/mark.png");
+    let bytes = include_bytes!("../../assets/mark.png");
     let image = image::load_from_memory(bytes).ok()?.to_rgba8();
     let size = [image.width() as usize, image.height() as usize];
     let pixels = image
