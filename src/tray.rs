@@ -56,6 +56,20 @@ impl AppWindow {
         None
     }
 
+    pub fn strip_frame(&self) {}
+
+    pub fn work_area(&self) -> Option<(i32, i32, i32, i32)> {
+        None
+    }
+
+    pub fn cursor(&self) -> Option<(i32, i32)> {
+        None
+    }
+
+    pub fn origin(&self) -> Option<(i32, i32)> {
+        None
+    }
+
     pub fn park(&self) -> Option<(i32, i32)> {
         None
     }
@@ -98,10 +112,31 @@ mod win {
     const TPM_RETURNCMD: u32 = 0x0100;
     const SM_CXSMICON: i32 = 49;
     const IDI_APPLICATION: usize = 32512;
+    #[repr(C)]
+    #[derive(Default)]
+    struct MonitorInfo {
+        size: u32,
+        monitor: WindowRect,
+        work: WindowRect,
+        flags: u32,
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn MonitorFromWindow(hwnd: Handle, flags: u32) -> Handle;
+        fn GetMonitorInfoW(monitor: Handle, info: *mut MonitorInfo) -> i32;
+    }
+
+    const MONITOR_DEFAULTTONEAREST: u32 = 2;
+    const GWL_STYLE: i32 = -16;
     const GWL_EXSTYLE: i32 = -20;
+    const WS_CAPTION: i32 = 0x00C0_0000;
+    const WS_THICKFRAME: i32 = 0x0004_0000;
+    const SWP_FRAMECHANGED: u32 = 0x0020;
     const WS_EX_TOOLWINDOW: i32 = 0x0000_0080;
     const WS_EX_APPWINDOW: i32 = 0x0004_0000;
     const SWP_NOSIZE: u32 = 0x0001;
+    const SWP_NOMOVE: u32 = 0x0002;
     const SWP_NOZORDER: u32 = 0x0004;
     const SWP_NOACTIVATE: u32 = 0x0010;
     const SW_SHOW: i32 = 5;
@@ -266,6 +301,71 @@ mod win {
                 return None;
             }
             Some(Self { hwnd })
+        }
+
+        /// The mouse position on screen, which does not move when the window does.
+        pub fn cursor(&self) -> Option<(i32, i32)> {
+            let mut point = Point::default();
+            if unsafe { GetCursorPos(&mut point) } == 0 {
+                return None;
+            }
+            Some((point.x, point.y))
+        }
+
+        /// The usable area of the monitor the window is on: x, y, width, height.
+        /// Maximizing to this by hand avoids the framed client Windows uses for
+        /// a native maximize, which left a dead band at the bottom.
+        pub fn work_area(&self) -> Option<(i32, i32, i32, i32)> {
+            let monitor = unsafe { MonitorFromWindow(self.hwnd, MONITOR_DEFAULTTONEAREST) };
+            if monitor == 0 {
+                return None;
+            }
+            let mut info = MonitorInfo {
+                ..MonitorInfo::default()
+            };
+            info.size = std::mem::size_of::<MonitorInfo>() as u32;
+            if unsafe { GetMonitorInfoW(monitor, &mut info) } == 0 {
+                return None;
+            }
+            let rect = info.work;
+            Some((
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+            ))
+        }
+
+        /// The window's position on screen.
+        pub fn origin(&self) -> Option<(i32, i32)> {
+            let mut rect = WindowRect::default();
+            if unsafe { GetWindowRect(self.hwnd, &mut rect) } == 0 {
+                return None;
+            }
+            Some((rect.left, rect.top))
+        }
+
+        /// Drops the caption and resize frame styles that winit keeps even for a
+        /// frameless window. Windows lays out the drawn surface inside that frame
+        /// otherwise, which shifts the whole interface down and right.
+        pub fn strip_frame(&self) {
+            unsafe {
+                let style = GetWindowLongW(self.hwnd, GWL_STYLE);
+                let cleaned = style & !(WS_CAPTION | WS_THICKFRAME);
+                if cleaned == style {
+                    return;
+                }
+                SetWindowLongW(self.hwnd, GWL_STYLE, cleaned);
+                SetWindowPos(
+                    self.hwnd,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
         }
 
         /// Moves the window off-screen, drops its taskbar button and returns

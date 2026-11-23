@@ -76,10 +76,16 @@ pub(crate) struct App {
     /// True while only the tray icon is visible; downloads keep running.
     pub(crate) hidden: bool,
     /// The OS window, parked off-screen while hidden.
-    window: Option<crate::tray::AppWindow>,
+    pub(crate) window: Option<crate::tray::AppWindow>,
     parked_at: Option<(i32, i32)>,
     /// Set when the tray asked to quit, so the close request is not caught.
     quitting: bool,
+    /// An edge drag that is resizing the window right now.
+    pub(crate) resizing: Option<crate::ui::shell::resize::Resize>,
+    /// True while the window fills the monitor's work area.
+    pub(crate) maximized: bool,
+    /// Where to put the window back when it is restored.
+    restore_geometry: Option<(egui::Vec2, egui::Pos2)>,
 }
 
 impl App {
@@ -128,7 +134,42 @@ impl App {
             window,
             parked_at: None,
             quitting: false,
+            resizing: None,
+            maximized: false,
+            restore_geometry: None,
         }
+    }
+
+    /// Maximizes to the monitor work area by hand: a native maximize of a
+    /// frameless window keeps the framed client size and leaves a dead band.
+    pub(crate) fn toggle_maximize(&mut self, ctx: &egui::Context) {
+        if self.maximized {
+            if let Some((size, position)) = self.restore_geometry.take() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(position));
+            }
+            self.maximized = false;
+            return;
+        }
+        let Some(window) = self.window.as_ref() else {
+            return;
+        };
+        let Some((x, y, width, height)) = window.work_area() else {
+            return;
+        };
+        let size = ctx.screen_rect().size();
+        let position = ctx
+            .input(|input| input.viewport().outer_rect)
+            .map_or(egui::Pos2::ZERO, |rect| rect.min);
+        self.restore_geometry = Some((size, position));
+        self.maximized = true;
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
+            width as f32,
+            height as f32,
+        )));
+        ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+            x as f32, y as f32,
+        )));
     }
 
     pub(crate) fn notify(&mut self, message: impl Into<String>, bad: bool) {
@@ -382,6 +423,14 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(120));
+        self.resize_edges(ctx);
+        // winit keeps the caption and resize styles on a frameless window and only
+        // hides the non-client area in WM_NCCALCSIZE. Windows still lays the drawn
+        // surface out inside that frame, which shifted and clipped the interface, so
+        // the styles are stripped here (a no-op once they are already gone).
+        if let Some(window) = self.window.as_ref() {
+            window.strip_frame();
+        }
         self.handle_tray(ctx);
         self.handle_close(ctx);
         brand::paint_background(ctx);
@@ -458,6 +507,7 @@ impl eframe::App for App {
 
         dialog::draw(self, ctx);
         self.toast(ctx);
+
 
 
         if self.dirty && self.saved_at.elapsed() > Duration::from_millis(800) {

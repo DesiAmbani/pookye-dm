@@ -20,12 +20,11 @@ impl App {
                 );
                 let response =
                     ui.interact(drag, egui::Id::new("titlebar-drag"), Sense::click_and_drag());
-                if response.drag_started() {
+                if response.drag_started() && self.resizing.is_none() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
                 if response.double_clicked() {
-                    let maximized = ctx.input(|input| input.viewport().maximized).unwrap_or(false);
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+                    self.toggle_maximize(ctx);
                 }
 
                 let brand_rect = Rect::from_min_max(
@@ -72,9 +71,8 @@ impl App {
                 if window_button(&mut right, WindowGlyph::Close) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
-                let maximized = ctx.input(|input| input.viewport().maximized).unwrap_or(false);
-                if window_button(&mut right, WindowGlyph::Maximize(maximized)) {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+                if window_button(&mut right, WindowGlyph::Maximize(self.maximized)) {
+                    self.toggle_maximize(ctx);
                 }
                 if window_button(&mut right, WindowGlyph::Minimize) {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));

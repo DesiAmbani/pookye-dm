@@ -264,9 +264,10 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
   *Quit Pookye DM*. With the setting off, closing quits as before.
 - No desktop notifications and no auto-updater yet. Downloads finishing show an
   in-app notice instead.
-- The window is a fixed 1160×700 for now: a frameless window that is also resizable
-  gets a native frame winit does not account for, which shifted and clipped the drawn
-  interface.
+- The window draws its own chrome: the native caption and resize frame are removed
+  from the window handle, because Windows otherwise lays the drawn surface out inside
+  that frame and shifts it. Edges are resized by the app itself (minimum 880×540) and
+  the maximize button fills the monitor's work area.
 - No licence/account UI and no System-wide mode: the interface and the engine cover the
   manager itself, not the commercial shell around it.
 - The extension is unpacked only; it is not published to the Chrome Web Store.

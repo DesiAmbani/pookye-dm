@@ -26,11 +26,9 @@ fn main() -> eframe::Result {
 
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([1160.0, 700.0])
+        .with_min_inner_size([880.0, 540.0])
         .with_decorations(false)
-        // A resizable frameless window gets a native frame that winit does not
-        // account for, which shifts and clips the drawn surface. A fixed size
-        // keeps the whole interface inside the window.
-        .with_resizable(false)
+        .with_resizable(true)
         .with_title("Pookye Download Manager");
     if let Some(icon) = brand::window_icon() {
         viewport = viewport.with_icon(icon);
