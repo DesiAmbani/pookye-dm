@@ -16,9 +16,12 @@ const MIN_HEIGHT: f32 = 540.0;
 /// Which edges of the window a drag is moving.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Direction {
+    North,
+    South,
     West,
     East,
-    South,
+    NorthWest,
+    NorthEast,
     SouthWest,
     SouthEast,
 }
@@ -27,13 +30,17 @@ impl Direction {
     fn from_pointer(rect: Rect, pointer: Pos2) -> Option<Self> {
         let left = pointer.x <= rect.left() + EDGE;
         let right = pointer.x >= rect.right() - EDGE;
+        let top = pointer.y <= rect.top() + EDGE;
         let bottom = pointer.y >= rect.bottom() - EDGE;
-        match (left, right, bottom) {
-            (true, _, true) => Some(Self::SouthWest),
-            (_, true, true) => Some(Self::SouthEast),
-            (true, _, _) => Some(Self::West),
-            (_, true, _) => Some(Self::East),
-            (_, _, true) => Some(Self::South),
+        match (left, right, top, bottom) {
+            (true, _, true, _) => Some(Self::NorthWest),
+            (_, true, true, _) => Some(Self::NorthEast),
+            (true, _, _, true) => Some(Self::SouthWest),
+            (_, true, _, true) => Some(Self::SouthEast),
+            (true, _, _, _) => Some(Self::West),
+            (_, true, _, _) => Some(Self::East),
+            (_, _, true, _) => Some(Self::North),
+            (_, _, _, true) => Some(Self::South),
             _ => None,
         }
     }
@@ -41,17 +48,22 @@ impl Direction {
     fn cursor(self) -> egui::CursorIcon {
         match self {
             Self::West | Self::East => egui::CursorIcon::ResizeHorizontal,
-            Self::South => egui::CursorIcon::ResizeVertical,
-            Self::SouthWest | Self::SouthEast => egui::CursorIcon::ResizeNwSe,
+            Self::North | Self::South => egui::CursorIcon::ResizeVertical,
+            Self::NorthWest | Self::SouthEast => egui::CursorIcon::ResizeNwSe,
+            Self::NorthEast | Self::SouthWest => egui::CursorIcon::ResizeNeSw,
         }
     }
 
     fn moves_west(self) -> bool {
-        matches!(self, Self::West | Self::SouthWest)
+        matches!(self, Self::West | Self::NorthWest | Self::SouthWest)
     }
 
     fn grows_east(self) -> bool {
-        matches!(self, Self::East | Self::SouthEast)
+        matches!(self, Self::East | Self::NorthEast | Self::SouthEast)
+    }
+
+    fn moves_north(self) -> bool {
+        matches!(self, Self::North | Self::NorthWest | Self::NorthEast)
     }
 
     fn grows_south(self) -> bool {
@@ -123,6 +135,10 @@ impl App {
         if drag.direction.grows_east() {
             size.x += dx;
         }
+        if drag.direction.moves_north() {
+            size.y -= dy;
+            origin.1 += dy as i32;
+        }
         if drag.direction.grows_south() {
             size.y += dy;
         }
@@ -134,7 +150,12 @@ impl App {
             }
             size.x = MIN_WIDTH;
         }
-        size.y = size.y.max(MIN_HEIGHT);
+        if size.y < MIN_HEIGHT {
+            if drag.direction.moves_north() {
+                origin.1 = drag.origin.1 + (drag.size.y - MIN_HEIGHT) as i32;
+            }
+            size.y = MIN_HEIGHT;
+        }
 
         if size != drag.applied_size {
             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));

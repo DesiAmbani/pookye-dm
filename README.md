@@ -266,7 +266,8 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
   in-app notice instead.
 - The window draws its own chrome: the native caption and resize frame are removed
   from the window handle, because Windows otherwise lays the drawn surface out inside
-  that frame and shifts it. Edges are resized by the app itself (minimum 880×540) and
+  that frame and shifts it. All four sides and corners are resized by the app itself
+  (minimum 880×540), while the rest of the title bar still drags the window, and
   the maximize button fills the monitor's work area.
 - No licence/account UI and no System-wide mode: the interface and the engine cover the
   manager itself, not the commercial shell around it.
