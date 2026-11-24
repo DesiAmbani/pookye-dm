@@ -17,10 +17,22 @@ use super::{
 };
 
 pub(crate) fn client(proxy: Option<&str>) -> Result<Client, String> {
+    client_bound(proxy, None)
+}
+
+/// A client whose sockets leave from one adapter's address, so a download can
+/// be spread across the networks the user picked.
+pub(crate) fn client_bound(
+    proxy: Option<&str>,
+    local: Option<std::net::IpAddr>,
+) -> Result<Client, String> {
     let mut builder = Client::builder()
         .user_agent(USER_AGENT_VALUE)
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(120));
+    if let Some(local) = local {
+        builder = builder.local_address(local);
+    }
     if let Some(proxy) = proxy.map(str::trim).filter(|proxy| !proxy.is_empty()) {
         let proxy = reqwest::Proxy::all(proxy)
             .map_err(|e| format!("that proxy couldn't be used: {e}"))?;
@@ -404,6 +416,9 @@ pub(crate) fn supervisor(
     folder: PathBuf,
     requested: Option<String>,
     connections: usize,
+    // One entry per chosen network: the local address its streams bind to.
+    binds: Vec<Option<std::net::IpAddr>>,
+    proxy: Option<String>,
     context: RequestContext,
     progress: Arc<Progress>,
     file_name_slot: Arc<Mutex<Option<String>>>,
@@ -447,10 +462,14 @@ pub(crate) fn supervisor(
         drop(file);
 
         // Decide how to split. Never create segments smaller than MIN_SEGMENT.
+        // Each network gets its own share of streams, so two networks carry twice
+        // the ranges one network would.
+        let lanes = binds.len().max(1);
+        let streams = connections.max(1) * lanes;
         let mut segments = Vec::new();
-        if total > 0 && info.ranges && connections > 1 {
+        if total > 0 && info.ranges && streams > 1 {
             let wanted = (total / MIN_SEGMENT).max(1) as usize;
-            let count = connections.min(wanted).max(1);
+            let count = streams.min(wanted).max(1);
             let size = total / count as u64;
             for index in 0..count {
                 let start = index as u64 * size;
@@ -464,6 +483,7 @@ pub(crate) fn supervisor(
                     end,
                     done: std::sync::atomic::AtomicU64::new(0),
                     unbounded: false,
+                    network: index % lanes,
                 }));
             }
         } else if total > 0 {
@@ -472,6 +492,7 @@ pub(crate) fn supervisor(
                 end: total - 1,
                 done: std::sync::atomic::AtomicU64::new(0),
                 unbounded: false,
+                network: 0,
             }));
         } else {
             segments.push(Arc::new(Segment {
@@ -479,6 +500,7 @@ pub(crate) fn supervisor(
                 end: u64::MAX - 1,
                 done: std::sync::atomic::AtomicU64::new(0),
                 unbounded: true,
+                network: 0,
             }));
         }
 
@@ -488,7 +510,9 @@ pub(crate) fn supervisor(
 
         let mut handles = Vec::new();
         for segment in segments {
-            let client = client.clone();
+            let lane = segment.network.min(lanes.saturating_sub(1));
+            let bound = binds.get(lane).copied().flatten();
+            let client = client_bound(proxy.as_deref(), bound).unwrap_or_else(|_| client.clone());
             let url = url.clone();
             let context = context.clone();
             let path = path.clone();

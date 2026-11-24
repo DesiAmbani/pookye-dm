@@ -52,7 +52,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 );
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new("Segments per download")
+                    RichText::new("Segments per network")
                         .size(10.8)
                         .color(brand::DIM),
                 );
@@ -64,7 +64,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 }
                 ui.label(
                     RichText::new(format!(
-                        "{} parallel connections. Use one for servers that block parallel requests.",
+                        "{} parallel connections on each selected network. Use one for servers that block parallel requests.",
                         app.settings.connections
                     ))
                     .size(10.2)

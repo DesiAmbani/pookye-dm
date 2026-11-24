@@ -214,7 +214,7 @@ pub struct Settings {
     /// Where downloads are written.
     #[serde(default = "default_folder")]
     pub folder: String,
-    /// Streams (parallel range requests) per download.
+    /// Streams (parallel range requests) per network.
     #[serde(default = "default_connections")]
     pub connections: usize,
     /// How many downloads may run at the same time.
@@ -232,6 +232,10 @@ pub struct Settings {
     /// When downloads may run.
     #[serde(default)]
     pub schedule: Schedule,
+    /// IPv4 addresses of the networks new downloads are spread over; empty means
+    /// every network the machine has.
+    #[serde(default)]
+    pub networks: Vec<String>,
     /// Closing the window keeps the app in the tray.
     #[serde(default)]
     pub close_to_tray: bool,
@@ -269,6 +273,7 @@ impl Default for Settings {
             slow_mode: false,
             slow_mode_speed: default_slow_mode_speed(),
             schedule: Schedule::default(),
+            networks: Vec::new(),
             close_to_tray: false,
             system_mode: false,
             proxy_on: false,

@@ -8,10 +8,12 @@
 //! and every worker passes its bytes through one shared rate limiter so a
 //! system-wide speed cap applies to all connections.
 
+pub mod adapters;
 mod download;
 mod manager;
 mod video;
 
+pub use adapters::Adapter;
 pub use download::{proxy_is_valid, ProbeInfo};
 pub use manager::{Job, Manager};
 pub use video::{find_tools, is_video_url, INSTALL_HINT};
@@ -134,6 +136,8 @@ pub struct Segment {
     pub end: u64,
     pub done: AtomicU64,
     pub unbounded: bool,
+    /// Which selected network carries this range; 0 when there is only one.
+    pub network: usize,
 }
 
 impl Segment {
@@ -168,14 +172,15 @@ impl Progress {
         }
     }
 
-    pub fn snapshot_segments(&self) -> Vec<(u64, u64, u64)> {
+    /// One row per range: `(length, done, start, network)`.
+    pub fn snapshot_segments(&self) -> Vec<(u64, u64, u64, usize)> {
         match self.segments.lock() {
             Ok(segments) => segments
                 .iter()
                 .map(|s| {
                     let done = s.done.load(Ordering::Relaxed);
                     let len = if s.unbounded { done.max(1) } else { s.length() };
-                    (len, done.min(len), s.start)
+                    (len, done.min(len), s.start, s.network)
                 })
                 .collect(),
             Err(_) => Vec::new(),

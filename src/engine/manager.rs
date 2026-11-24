@@ -19,6 +19,15 @@ pub struct Job {
     pub folder: PathBuf,
     pub category: Category,
     pub connections: usize,
+    /// Streams per network; `connections` is this multiplied by the networks.
+    pub per_network: usize,
+    /// Names of the networks carrying this job, for the interface.
+    pub networks: Vec<String>,
+    /// The local address each network's streams bind to.
+    binds: Vec<Option<std::net::IpAddr>>,
+    /// Bytes per network at the previous sample, and the rate since then.
+    net_sampled: Vec<u64>,
+    pub net_speed: Vec<f64>,
     pub status: Status,
     pub error: Option<String>,
     pub progress: Arc<Progress>,
@@ -117,6 +126,41 @@ impl Manager {
         connections: usize,
         context: RequestContext,
     ) -> Result<u64, String> {
+        self.add_bound(
+            url,
+            requested_name,
+            folder,
+            connections,
+            Vec::new(),
+            Vec::new(),
+            context,
+        )
+    }
+
+    /// The same, but spread over the networks the user picked: one local address
+    /// per network in `binds`, with `per_network` streams each.
+    pub fn add_bound(
+        &mut self,
+        url: String,
+        requested_name: Option<String>,
+        folder: &Path,
+        per_network: usize,
+        binds: Vec<Option<std::net::IpAddr>>,
+        labels: Vec<String>,
+        context: RequestContext,
+    ) -> Result<u64, String> {
+        let binds = if binds.is_empty() {
+            vec![None]
+        } else {
+            binds
+        };
+        let per_network = per_network.clamp(1, 32);
+        let connections = per_network * binds.len();
+        let labels = if labels.len() == binds.len() {
+            labels
+        } else {
+            vec![String::from("Default route"); binds.len()]
+        };
         let url = url.trim().to_string();
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             return Err("That isn't a web link. Links start with http:// or https://.".to_string());
@@ -153,7 +197,12 @@ impl Manager {
             category: Category::of(&name),
             file_name: name,
             folder: folder.to_path_buf(),
-            connections: connections.clamp(1, 32),
+            connections,
+            per_network,
+            networks: labels,
+            binds,
+            net_sampled: Vec::new(),
+            net_speed: Vec::new(),
             status: Status::Queued,
             error: None,
             progress: Arc::new(Progress::new()),
@@ -216,13 +265,25 @@ impl Manager {
         let handle = if is_video {
             thread::spawn(move || video_supervisor(url, folder, requested, progress, slot))
         } else {
-            let connections = job.connections;
+            let per_network = job.per_network;
+            let binds = job.binds.clone();
+            let proxy = self.proxy.clone();
             let context = job.context.clone();
             let limiter = self.limiter.clone();
             let client = client.expect("client checked above");
             thread::spawn(move || {
                 supervisor(
-                    client, url, folder, requested, connections, context, progress, slot, limiter,
+                    client,
+                    url,
+                    folder,
+                    requested,
+                    per_network,
+                    binds,
+                    proxy,
+                    context,
+                    progress,
+                    slot,
+                    limiter,
                 )
             })
         };
@@ -387,6 +448,16 @@ impl Manager {
                     job.peak = job.peak.max(job.speed);
                     job.sampled_bytes = bytes;
                     job.sampled_at = Instant::now();
+                    let counts = job.network_bytes();
+                    if job.net_sampled.len() != counts.len() {
+                        job.net_sampled = vec![0; counts.len()];
+                    }
+                    job.net_speed = counts
+                        .iter()
+                        .zip(job.net_sampled.iter())
+                        .map(|(now, before)| now.saturating_sub(*before) as f64 / elapsed)
+                        .collect();
+                    job.net_sampled = counts;
                 }
             } else {
                 job.speed = 0.0;
@@ -550,6 +621,8 @@ impl Manager {
                     "bytesDownloaded": job.progress.bytes(),
                     "speedBps": job.speed,
                     "connections": job.connections,
+                    "perNetwork": job.per_network,
+                    "networks": job.networks,
                     "folder": job.folder.to_string_lossy(),
                     "error": job.error,
                 })
@@ -577,6 +650,11 @@ impl Job {
             folder: self.folder.clone(),
             category: self.category,
             connections: self.connections,
+            per_network: self.per_network,
+            networks: self.networks.clone(),
+            binds: self.binds.clone(),
+            net_sampled: Vec::new(),
+            net_speed: Vec::new(),
             status: self.status,
             error: self.error.clone(),
             progress: self.progress.clone(),
@@ -596,6 +674,19 @@ impl Job {
             history_at: Instant::now(),
             worker: None,
         }
+    }
+
+    /// Bytes written so far by each network's ranges, in network order.
+    pub fn network_bytes(&self) -> Vec<u64> {
+        let lanes = self.binds.len().max(1);
+        let mut bytes = vec![0u64; lanes];
+        if let Ok(segments) = self.progress.segments.lock() {
+            for segment in segments.iter() {
+                let lane = segment.network.min(lanes - 1);
+                bytes[lane] += segment.done.load(Ordering::Relaxed);
+            }
+        }
+        bytes
     }
 
     /// How long the transfer ran, in seconds.

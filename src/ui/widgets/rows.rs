@@ -9,7 +9,12 @@ use super::{
 };
 
 
-pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Action> {
+pub(crate) fn download_row(
+    ui: &mut Ui,
+    job: &Job,
+    selected: bool,
+    expanded: bool,
+) -> Option<Action> {
     let mut action = None;
 
     brand::card_frame()
@@ -34,18 +39,31 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
                             .color(brand::INK),
                     );
                     ui.label(
-                        RichText::new(format!(
-                            "{} · {} · {} streams",
-                            host_of(&job.url),
-                            job.category.label(),
-                            job.connections
-                        ))
+                        RichText::new(if job.networks.len() > 1 {
+                            format!(
+                                "{} · {} · {} streams on {} networks",
+                                host_of(&job.url),
+                                job.category.label(),
+                                job.connections,
+                                job.networks.len()
+                            )
+                        } else {
+                            format!(
+                                "{} · {} · {} streams",
+                                host_of(&job.url),
+                                job.category.label(),
+                                job.connections
+                            )
+                        })
                         .size(10.8)
                         .color(brand::DIM),
                     );
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     status_pill(ui, job.status);
+                    if chevron(ui, expanded).clicked() {
+                        action = Some(Action::ToggleDetails(job.id));
+                    }
                     if job.status == Status::Downloading {
                         ui.label(
                             RichText::new(format_speed(job.speed))
@@ -78,7 +96,7 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let width = (ui.available_width() - (segments.len() as f32 - 1.0) * 4.0)
                         / segments.len() as f32;
-                    for (index, (length, done, _start)) in segments.iter().enumerate() {
+                    for (index, (length, done, _start, _network)) in segments.iter().enumerate() {
                         let part = if *length == 0 {
                             0.0
                         } else {
@@ -138,7 +156,7 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
                 });
             });
 
-            if job.status.is_finished() {
+            if expanded {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -202,6 +220,33 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
         });
     ui.add_space(8.0);
     action
+}
+
+/// The disclosure arrow that opens a row's statistics, as in QDM.
+fn chevron(ui: &mut Ui, expanded: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
+    let hover = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.12);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let painter = ui.painter();
+    painter.rect_filled(
+        rect,
+        CornerRadius::same(6),
+        brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
+    );
+    let c = rect.center();
+    let stroke = Stroke::new(1.4_f32, brand::mix(brand::DIM, brand::INK, hover));
+    if expanded {
+        painter.line_segment([c + Vec2::new(-4.0, 1.5), c + Vec2::new(0.0, -2.5)], stroke);
+        painter.line_segment([c + Vec2::new(0.0, -2.5), c + Vec2::new(4.0, 1.5)], stroke);
+    } else {
+        painter.line_segment([c + Vec2::new(-4.0, -1.5), c + Vec2::new(0.0, 2.5)], stroke);
+        painter.line_segment([c + Vec2::new(0.0, 2.5), c + Vec2::new(4.0, 1.5)], stroke);
+    }
+    response
 }
 
 /// A rounded tile holding the file's extension, like an app icon.

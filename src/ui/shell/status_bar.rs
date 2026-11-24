@@ -38,7 +38,7 @@ impl App {
                     );
                     ui.label(
                         RichText::new(format!(
-                            "{} downloaded · {} streams per download",
+                            "{} downloaded · {} streams per network",
                             format_bytes(self.manager.total_downloaded()),
                             self.settings.connections
                         ))

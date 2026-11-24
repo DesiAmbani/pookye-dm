@@ -74,7 +74,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
         metric(
             ui,
             "Streams",
-            format!("{} per download", app.settings.connections),
+            format!("{} per network", app.settings.connections),
         );
         metric(
             ui,

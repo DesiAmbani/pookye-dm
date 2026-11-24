@@ -63,6 +63,8 @@ pub(crate) struct App {
     pub(crate) search: String,
     pub(crate) filter: Filter,
     pub(crate) selected: HashSet<u64>,
+    /// Rows whose detail panel is open.
+    pub(crate) expanded: HashSet<u64>,
     pub(crate) show_add: bool,
     pub(crate) add: ProbeForm,
     pub(crate) notice: Option<(String, bool, Instant)>,
@@ -86,6 +88,8 @@ pub(crate) struct App {
     pub(crate) maximized: bool,
     /// Where to put the window back when it is restored.
     restore_geometry: Option<(egui::Vec2, egui::Pos2)>,
+    /// The machine's usable networks, shown in the sidebar and the add sheet.
+    pub(crate) adapters: Vec<engine::Adapter>,
 }
 
 impl App {
@@ -111,9 +115,10 @@ impl App {
             None
         };
         let window = crate::tray::AppWindow::find();
+        let adapters = engine::adapters::list();
         Self {
             manager,
-            add: ProbeForm::new(&settings),
+            add: ProbeForm::new(&settings, &adapters),
             settings,
             bridge,
             logo,
@@ -122,6 +127,7 @@ impl App {
             search: String::new(),
             filter: Filter::All,
             selected: HashSet::new(),
+            expanded: HashSet::new(),
             show_add: false,
             notice: None,
             dirty: false,
@@ -137,7 +143,20 @@ impl App {
             resizing: None,
             maximized: false,
             restore_geometry: None,
+            adapters,
         }
+    }
+
+    /// Live speed carried by one network, across every running download.
+    pub(crate) fn network_speed(&self, adapter: &engine::Adapter) -> f64 {
+        let label = adapter.label();
+        self.manager
+            .jobs
+            .iter()
+            .fold(0.0, |total, job| match job.networks.iter().position(|n| *n == label) {
+                Some(lane) => total + job.net_speed.get(lane).copied().unwrap_or(0.0),
+                None => total,
+            })
     }
 
     /// Maximizes to the monitor work area by hand: a native maximize of a
@@ -296,7 +315,8 @@ impl App {
     }
 
     pub(crate) fn open_add(&mut self) {
-        self.add = ProbeForm::new(&self.settings);
+        self.adapters = engine::adapters::list();
+        self.add = ProbeForm::new(&self.settings, &self.adapters);
         self.show_add = true;
     }
 

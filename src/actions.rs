@@ -20,6 +20,7 @@ pub(crate) enum Action {
     ResumeSelected,
     RemoveSelected,
     ClearList,
+    ToggleDetails(u64),
 }
 
 pub(crate) fn apply(app: &mut App, action: Action) {
@@ -81,6 +82,11 @@ pub(crate) fn apply(app: &mut App, action: Action) {
         Action::ClearList => {
             app.selected.clear();
             app.manager.clear_finished();
+        }
+        Action::ToggleDetails(id) => {
+            if !app.expanded.remove(&id) {
+                app.expanded.insert(id);
+            }
         }
     }
 }

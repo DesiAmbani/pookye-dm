@@ -24,6 +24,10 @@ with a queue, per-connection telemetry and a browser handoff.
 
 - **Multi-segment transfers** — up to 32 parallel range requests per file, each
   written straight to its own offset in the destination file.
+- **Per-network streams** — pick the adapters a download may use. Every selected
+  network carries its own share of the ranges, with its sockets bound to that
+  adapter's address, and 4/8/16/32 streams each (Auto starts at eight). The
+  sidebar and Networks page show what each network carried and its live speed.
 - **Pause and resume** — every stream keeps its own position, so resuming continues
   from the last byte rather than starting the file again.
 - **Automatic retry** — failed or stalled streams back off and retry, and a server
@@ -77,7 +81,7 @@ with a queue, per-connection telemetry and a browser handoff.
 | --- | --- |
 | **Downloads** | Paste bar, search and category filters, download rows with per-stream bars, batch actions |
 | **Speed** | System-wide limit, presets, average speed and each download's share |
-| **Networks** | Per-connection contribution: range, bytes carried and completion |
+| **Networks** | Contribution per network, then per connection: range, bytes and completion |
 | **Schedule** | Concurrency limit and the waiting queue, with *Start now* |
 | **Settings** | Folder, segments per download, concurrency, clipboard watch, history |
 | **About** | Version, licence, source and lineage |
@@ -254,7 +258,10 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
 - Pausing is honoured between 64 KiB reads, so it is not instantaneous mid-chunk.
 - Progress resumes within a session; a restarted app does not continue an interrupted
   partial file.
-- Streams share one network route when no proxy is set; there is no per-adapter routing.
+- Downloads bind to the networks the picker offers, so a tether or second NIC can
+  carry its own streams while its route exists. There is no TUN adapter and no
+  System-wide mode: traffic from other apps stays on the default route, and an
+  adapter with no route to the server simply fails its share.
 - The automatic proxy mode that tests free proxies against a direct connection is not
   implemented; the proxy is used whenever it is switched on and valid.
 - Video pages need `yt-dlp` and `ffmpeg`: drop both into a `tools` folder next to

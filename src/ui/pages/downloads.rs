@@ -17,7 +17,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
             ui.label(
                 RichText::new(if speed > 0.0 {
                     format!(
-                        "{} active · {} streams each",
+                        "{} active · {} streams per network",
                         app.manager.downloading_count(),
                         app.settings.connections
                     )
@@ -112,7 +112,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                     .color(brand::MUTED),
             );
             ui.label(
-                RichText::new(format!("· {} streams", app.settings.connections))
+                RichText::new(format!("· {} streams per network", app.settings.connections))
                     .size(10.8)
                     .color(brand::DIM),
             );
@@ -229,7 +229,8 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 for id in rows {
                     if let Some(job) = app.manager.jobs.iter().find(|job| job.id == id) {
                         let selected = app.selected.contains(&id);
-                        if let Some(action) = w::download_row(ui, job, selected) {
+                        let expanded = app.expanded.contains(&id);
+                        if let Some(action) = w::download_row(ui, job, selected, expanded) {
                             actions.push(action);
                         }
                     }
