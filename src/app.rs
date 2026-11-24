@@ -147,6 +147,41 @@ impl App {
         }
     }
 
+    /// Whether new downloads may use this adapter.
+    pub(crate) fn adapter_enabled(&self, adapter: &engine::Adapter) -> bool {
+        let ip = adapter.ip.to_string();
+        !self.settings.networks_off.iter().any(|off| off == &ip)
+    }
+
+    /// Leaves an adapter out of future downloads, or puts it back.
+    pub(crate) fn toggle_adapter(&mut self, adapter: &engine::Adapter) {
+        let ip = adapter.ip.to_string();
+        match self.settings.networks_off.iter().position(|off| off == &ip) {
+            Some(index) => {
+                self.settings.networks_off.remove(index);
+            }
+            None => self.settings.networks_off.push(ip),
+        }
+        self.dirty = true;
+    }
+
+    /// The networks a new download may spread over. Until the user leaves an
+    /// adapter out there is no pin, and the default route carries the download.
+    fn network_binds(&self) -> (Vec<Option<std::net::IpAddr>>, Vec<String>) {
+        if self.settings.networks_off.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+        let mut binds = Vec::new();
+        let mut labels = Vec::new();
+        for adapter in &self.adapters {
+            if self.adapter_enabled(adapter) {
+                binds.push(Some(std::net::IpAddr::V4(adapter.ip)));
+                labels.push(adapter.label());
+            }
+        }
+        (binds, labels)
+    }
+
     /// Live speed carried by one network, across every running download.
     pub(crate) fn network_speed(&self, adapter: &engine::Adapter) -> f64 {
         let label = adapter.label();
@@ -285,11 +320,14 @@ impl App {
 
     fn start_download(&mut self, url: String, name: Option<String>) -> bool {
         let folder = PathBuf::from(self.settings.folder.trim());
-        match self.manager.add(
+        let (binds, labels) = self.network_binds();
+        match self.manager.add_bound(
             url,
             name,
             &folder,
             self.settings.connections,
+            binds,
+            labels,
             engine::RequestContext::default(),
         ) {
             Ok(_) => {

@@ -232,10 +232,10 @@ pub struct Settings {
     /// When downloads may run.
     #[serde(default)]
     pub schedule: Schedule,
-    /// IPv4 addresses of the networks new downloads are spread over; empty means
-    /// every network the machine has.
+    /// IPv4 addresses of adapters the user left out. Empty means no choice has
+    /// been made, so new downloads keep the default route.
     #[serde(default)]
-    pub networks: Vec<String>,
+    pub networks_off: Vec<String>,
     /// Closing the window keeps the app in the tray.
     #[serde(default)]
     pub close_to_tray: bool,
@@ -273,7 +273,7 @@ impl Default for Settings {
             slow_mode: false,
             slow_mode_speed: default_slow_mode_speed(),
             schedule: Schedule::default(),
-            networks: Vec::new(),
+            networks_off: Vec::new(),
             close_to_tray: false,
             system_mode: false,
             proxy_on: false,

@@ -28,6 +28,10 @@ with a queue, per-connection telemetry and a browser handoff.
   network carries its own share of the ranges, with its sockets bound to that
   adapter's address, and 4/8/16/32 streams each (Auto starts at eight). The
   sidebar and Networks page show what each network carried and its live speed.
+- **Leave a network out** — clicking a network in the sidebar takes it out of
+  future downloads, or puts it back; it says why that adapter's share would fail
+  (a virtual switch, a tunnel, a loopback address), and the choice is remembered
+  in `networks_off` in the settings file.
 - **Pause and resume** — every stream keeps its own position, so resuming continues
   from the last byte rather than starting the file again.
 - **Automatic retry** — failed or stalled streams back off and retry, and a server
@@ -128,7 +132,7 @@ Stored in `%APPDATA%\PookyeDM\settings.json`.
 | --- | --- | --- |
 | Download folder | your Downloads folder | Where files are written |
 | Segments per network | 8 | Parallel connections on each selected network (1 = safe, no splitting) |
-| Networks | every adapter | Which adapters the add sheet spreads a new download over |
+| Networks left out | none | Adapters the sidebar switched off for new downloads; while empty, the default route carries them |
 | Downloads at once | 3 | Concurrent downloads (1–10) |
 | Speed limit | 0 (unlimited) | System-wide cap in KB/s |
 | Schedule | off | Weekly window, optional end date, days picked individually |

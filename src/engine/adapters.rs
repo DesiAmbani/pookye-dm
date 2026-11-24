@@ -20,6 +20,24 @@ impl Adapter {
     pub fn label(&self) -> String {
         format!("{} · {}", self.name, self.ip)
     }
+
+    /// Why streams sent out of this adapter would fail, when that is knowable
+    /// without opening a socket. Virtual switches and tunnels carry an address
+    /// but have no route of their own to an internet host.
+    pub fn route_hint(&self) -> Option<&'static str> {
+        let text = format!("{} {}", self.name, self.description).to_lowercase();
+        if text.contains("hyper-v") || text.contains("vethernet") {
+            Some("a Hyper-V virtual switch, which has no route to the internet")
+        } else if text.contains("tap") || text.contains("vpn") || text.contains("wireguard") {
+            Some("a tunnel adapter, so its streams fail whenever the tunnel is down")
+        } else if text.contains("loopback") || self.ip.is_loopback() {
+            Some("a loopback address, which never leaves this machine")
+        } else if text.contains("bluetooth") {
+            Some("a Bluetooth adapter, which this build does not route TCP over")
+        } else {
+            None
+        }
+    }
 }
 
 /// Every adapter that is up, not loopback, and has an IPv4 address.

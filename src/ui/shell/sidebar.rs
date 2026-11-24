@@ -7,6 +7,77 @@
 
 use super::prelude::*;
 
+/// One clickable network row: state dot, name, and live speed or address.
+/// Clicking it leaves the adapter out of future downloads, or puts it back.
+fn net_row(
+    ui: &mut egui::Ui,
+    adapter: &crate::engine::Adapter,
+    enabled: bool,
+    speed: f64,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 22.0), Sense::click());
+    let hover = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.12);
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let painter = ui.painter();
+    painter.rect_filled(
+        rect,
+        CornerRadius::same(brand::R_TILE),
+        brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
+    );
+    let dot = if !enabled {
+        brand::ROSE
+    } else if speed > 1.0 {
+        brand::ACCENT_BRIGHT
+    } else {
+        brand::MUTED
+    };
+    painter.circle_filled(Pos2::new(rect.left() + 7.0, rect.center().y), 2.8, dot);
+
+    // The column is narrow: elide long adapter names, the full one is on hover.
+    let name: String = if adapter.name.chars().count() > 14 {
+        format!("{}…", adapter.name.chars().take(13).collect::<String>())
+    } else {
+        adapter.name.clone()
+    };
+    painter.text(
+        Pos2::new(rect.left() + 15.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        name,
+        brand::medium(11.2),
+        if enabled { brand::MUTED } else { brand::DIM },
+    );
+    let right = if !enabled {
+        "off".to_string()
+    } else if speed > 1.0 {
+        format_speed(speed)
+    } else {
+        adapter.ip.to_string()
+    };
+    painter.text(
+        Pos2::new(rect.right() - 5.0, rect.center().y),
+        Align2::RIGHT_CENTER,
+        right,
+        brand::medium(9.8),
+        if !enabled {
+            brand::ROSE
+        } else if speed > 1.0 {
+            brand::ACCENT_BRIGHT
+        } else {
+            brand::DIM
+        },
+    );
+
+    let hover_text = match adapter.route_hint() {
+        Some(why) => format!("{} — {why}", adapter.label()),
+        None => adapter.label(),
+    };
+    response.on_hover_text(hover_text)
+}
+
 impl App {
     pub(crate) fn sidebar(&mut self, ctx: &egui::Context) {
         egui::SidePanel::left("sidebar")
@@ -80,35 +151,45 @@ impl App {
                                 );
                             });
                         });
+                        ui.label(
+                            RichText::new("Click a network to leave it out")
+                                .size(9.4)
+                                .color(brand::DIM),
+                        );
+                        ui.add_space(2.0);
                         for adapter in self.adapters.clone() {
+                            let enabled = self.adapter_enabled(&adapter);
                             let speed = self.network_speed(&adapter);
-                            // The column is narrow: elide long adapter names, keep the
-                            // full one on hover so "vEthernet (Default Switch)" fits.
-                            let name: String = if adapter.name.chars().count() > 15 {
-                                format!("{}…", adapter.name.chars().take(14).collect::<String>())
-                            } else {
-                                adapter.name.clone()
-                            };
-                            ui.horizontal(|ui| {
-                                ui.add_space(6.0);
-                                ui.label(RichText::new(name).size(11.2).color(brand::MUTED))
-                                    .on_hover_text(adapter.label());
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if speed > 1.0 {
-                                        ui.label(
-                                            RichText::new(format_speed(speed))
-                                                .size(9.8)
-                                                .color(brand::ACCENT_BRIGHT),
+                            if net_row(ui, &adapter, enabled, speed).clicked() {
+                                self.toggle_adapter(&adapter);
+                            }
+                            if !enabled {
+                                // Indented and wrapped: the reason is a sentence, not a
+                                // label that can run off the side of the column.
+                                egui::Frame::new()
+                                    .inner_margin(Margin {
+                                        left: 15,
+                                        right: 4,
+                                        top: 0,
+                                        bottom: 2,
+                                    })
+                                    .show(ui, |ui| {
+                                        ui.add(
+                                            egui::Label::new(
+                                                RichText::new(format!(
+                                                    "Left out · {}",
+                                                    adapter.route_hint().unwrap_or(
+                                                        "its share fails when this adapter has no \
+                                                         route to the server"
+                                                    )
+                                                ))
+                                                .size(9.4)
+                                                .color(brand::ROSE),
+                                            )
+                                            .wrap(),
                                         );
-                                    } else {
-                                        ui.label(
-                                            RichText::new(adapter.ip.to_string())
-                                                .size(9.8)
-                                                .color(brand::DIM),
-                                        );
-                                    }
-                                });
-                            });
+                                    });
+                            }
                         }
 
                         ui.add_space(10.0);

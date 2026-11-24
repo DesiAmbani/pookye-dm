@@ -33,8 +33,8 @@ impl ProbeForm {
         let networks = adapters
             .iter()
             .map(|adapter| {
-                settings.networks.is_empty()
-                    || settings.networks.iter().any(|ip| ip == &adapter.ip.to_string())
+                let ip = adapter.ip.to_string();
+                !settings.networks_off.iter().any(|off| off == &ip)
             })
             .collect();
         Self {
@@ -356,12 +356,10 @@ pub(crate) fn draw(app: &mut App, ctx: &egui::Context) {
         let name = name.filter(|name| !name.trim().is_empty());
         let mut binds = Vec::new();
         let mut labels = Vec::new();
-        let mut chosen = Vec::new();
         for (index, adapter) in app.adapters.iter().enumerate() {
             if app.add.networks.get(index).copied().unwrap_or(false) {
                 binds.push(Some(std::net::IpAddr::V4(adapter.ip)));
                 labels.push(adapter.label());
-                chosen.push(adapter.ip.to_string());
             }
         }
         let per = if app.add.per_network == 0 {
@@ -381,7 +379,16 @@ pub(crate) fn draw(app: &mut App, ctx: &egui::Context) {
             Ok(_) => {
                 app.settings.folder = app.add.folder.clone();
                 app.settings.connections = per;
-                app.settings.networks = chosen;
+                // Remember what was left out, so the next download starts the same way.
+                app.settings.networks_off = app
+                    .adapters
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| {
+                        !app.add.networks.get(*index).copied().unwrap_or(true)
+                    })
+                    .map(|(_, adapter)| adapter.ip.to_string())
+                    .collect();
                 app.dirty = true;
                 app.go(Page::Downloads);
                 app.notify("Added to the queue.", false);
