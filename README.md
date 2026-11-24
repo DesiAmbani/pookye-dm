@@ -83,7 +83,7 @@ with a queue, per-connection telemetry and a browser handoff.
 | **Speed** | System-wide limit, presets, average speed and each download's share |
 | **Networks** | Contribution per network, then per connection: range, bytes and completion |
 | **Schedule** | Concurrency limit and the waiting queue, with *Start now* |
-| **Settings** | Folder, segments per download, concurrency, clipboard watch, history |
+| **Settings** | Folder, segments per network, concurrency, clipboard watch, history |
 | **About** | Version, licence, source and lineage |
 
 ## Build from source
@@ -110,11 +110,11 @@ faces as `assets/fonts/*.ttf`, and the window needs no decorations or external t
 ## Using it
 
 1. Paste a link into the bar on **Downloads** and press **Start download** (or Enter),
-   or use **+ New download** to check the link first and set the name, folder and
-   stream count.
+   or use **+ New download** to check the link first and set the name, folder, the
+   networks it may use and the streams per network.
 2. The download joins the queue; up to *Downloads at once* run in parallel.
 3. Watch the block bar and the per-stream tracks; open **Networks** to see what each
-   connection carries.
+   network and each connection carries.
 4. Pause, resume, retry or reveal the file from the row.
 
 **Shortcuts:** `Ctrl+N` opens the New download dialog, `Esc` clears the selection
@@ -127,7 +127,8 @@ Stored in `%APPDATA%\PookyeDM\settings.json`.
 | Option | Default | Description |
 | --- | --- | --- |
 | Download folder | your Downloads folder | Where files are written |
-| Segments per download | 8 | Parallel connections per file (1 = safe, no splitting) |
+| Segments per network | 8 | Parallel connections on each selected network (1 = safe, no splitting) |
+| Networks | every adapter | Which adapters the add sheet spreads a new download over |
 | Downloads at once | 3 | Concurrent downloads (1–10) |
 | Speed limit | 0 (unlimited) | System-wide cap in KB/s |
 | Schedule | off | Weekly window, optional end date, days picked individually |
@@ -157,7 +158,10 @@ Loopback only, JSON, CORS open for extension clients:
 | `GET` | `/jobs` | — | `{ "app": "pookye", "api": 1, "averageSpeedBps": 0, "active": 0, "queued": 0, "jobs": [ ... ] }` |
 
 Each job carries `id`, `url`, `fileName`, `category`, `status`, `totalBytes`,
-`bytesDownloaded`, `speedBps`, `connections`, `folder` and `error`.
+`bytesDownloaded`, `speedBps`, `perNetwork`, `networks`, `connections`, `folder`
+and `error`. `connections` is `perNetwork` times the number of networks, and each
+entry of `networks` names the adapter carrying it (for example
+`Ethernet · 192.168.1.74`, or `Default route` when none was chosen).
 
 The browser extension sends `POST /add` with a JSON body carrying `url` and an
 optional `fileName`; any other client can do the same. Read endpoints are easy to
@@ -200,7 +204,7 @@ src/ui/dialog.rs            New download sheet and link probing
 src/ui/pages/mod.rs         page dispatch
 src/ui/pages/downloads.rs   paste bar, filters, batch actions, rows
 src/ui/pages/speed.rs       system-wide limit and per-download share
-src/ui/pages/networks.rs    per-connection range traffic
+src/ui/pages/networks.rs    per-network contribution and per-connection ranges
 src/ui/pages/schedule.rs    weekly window and the waiting queue
 src/ui/pages/settings.rs    folder, segments, concurrency, slow mode
 src/ui/pages/about.rs       version, licence, lineage
@@ -219,6 +223,7 @@ src/ui/shell/status_bar.rs  speed, totals, folder, bridge port
 src/ui/shell/toast.rs       transient notices
 src/ui/shell/resize.rs      resize edges for the frameless window
 
+src/engine/adapters.rs      the machine's adapters, for per-network binding
 src/engine/mod.rs           shared types, formatting, rate limiter
 src/engine/download.rs      probe, range workers, supervisor
 src/engine/manager.rs       jobs, queue and the manager

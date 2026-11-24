@@ -50,7 +50,12 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
             ui.horizontal_wrapped(|ui| {
                 metric(ui, "Version", engine::VERSION.to_string());
                 metric(ui, "Licence", "MIT".to_string());
-                metric(ui, "Streams per file", "up to 32".to_string());
+                metric(ui, "Streams per network", "up to 32".to_string());
+                metric(
+                    ui,
+                    "Networks",
+                    format!("{} found", app.adapters.len()),
+                );
             });
 
             ui.add_space(10.0);
@@ -63,11 +68,12 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                 ui.add_space(4.0);
                 ui.label(
                     RichText::new(
-                        "The download-manager model here — parallel byte ranges, a queue with a \
-                         concurrency limit, browser interception and per-connection telemetry — \
-                         follows QDM (PBhadoo/QDM), which is MIT licensed. Pookye DM is an \
-                         independent Rust implementation: the engine, interface, local API and \
-                         browser bridge here are original code.",
+                        "The download-manager model here — parallel byte ranges, spreading one \
+                         file over several network adapters, a queue with a concurrency limit, \
+                         browser interception and per-connection telemetry — follows QDM \
+                         (PBhadoo/QDM), which is MIT licensed. Pookye DM is an independent Rust \
+                         implementation: the engine, interface, local API and browser bridge here \
+                         are original code.",
                     )
                     .size(11.0)
                     .color(brand::MUTED),
