@@ -74,6 +74,29 @@ pub(crate) fn pill_sized(ui: &mut Ui, label: &str, kind: Pill, min_width: f32) -
     response.clicked()
 }
 
+/// A bare text action, the way QDM labels `Clear list` beside a list heading.
+pub(crate) fn text_link(ui: &mut Ui, label: &str) -> bool {
+    let galley = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        brand::medium(11.5),
+        Color32::PLACEHOLDER,
+    );
+    let size = Vec2::new(galley.size().x + 6.0, galley.size().y + 6.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let t = ui
+        .ctx()
+        .animate_bool_with_time(response.id, response.hovered(), 0.12);
+    ui.painter().galley(
+        rect.center() - galley.size() * 0.5,
+        galley,
+        brand::mix(brand::MUTED, brand::INK, t),
+    );
+    response.clicked()
+}
+
 pub(crate) fn chip(ui: &mut Ui, label: &str, active: bool) -> bool {
     let font = brand::medium(11.5);
     let galley = ui

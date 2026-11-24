@@ -176,6 +176,62 @@ pub fn local_now() -> (u8, u32) {
     (weekday, minute)
 }
 
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/// A local wall-clock label for a past moment, as a finished row shows it:
+/// `Today 20:14`, `Yesterday 18:02`, or `21 Nov 09:40` for anything older.
+pub fn when_label(epoch: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if epoch > now + 60 {
+        return String::new();
+    }
+    // The local clock's distance from UTC, from the same read that gives us the
+    // date, so the label needs no timezone database.
+    let (_, minute, _, _, _) = local_parts();
+    let mut offset = minute as i64 * 60 - (now % 86_400) as i64;
+    if offset > 14 * 3600 {
+        offset -= 86_400;
+    } else if offset < -12 * 3600 {
+        offset += 86_400;
+    }
+    let local = epoch as i64 + offset;
+    let days_ago = (now as i64 + offset).div_euclid(86_400) - local.div_euclid(86_400);
+    let secs = local.rem_euclid(86_400);
+    let time = format!("{:02}:{:02}", secs / 3600, (secs % 3600) / 60);
+    match days_ago {
+        0 => format!("Today {time}"),
+        1 => format!("Yesterday {time}"),
+        n if n < 0 => time,
+        _ => {
+            let (_, month, day) = civil_from_days(local.div_euclid(86_400));
+            format!(
+                "{day} {} {time}",
+                MONTHS[(month as usize).saturating_sub(1).min(11)]
+            )
+        }
+    }
+}
+
+/// Howard Hinnant's civil_from_days: a day number since the epoch to `(y, m, d)`.
+fn civil_from_days(days: i64) -> (i64, u16, u16) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+    (year, month as u16, day as u16)
+}
+
 /// The computer's local date as `(year, month, day)`.
 pub fn local_date() -> (i32, u16, u16) {
     let (_, _, year, month, day) = local_parts();

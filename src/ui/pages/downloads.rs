@@ -34,9 +34,6 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
             if pill(ui, "New download", Pill::Primary) {
                 app.open_add();
             }
-            if pill(ui, "Clear list", Pill::Quiet) {
-                actions.push(Action::ClearList);
-            }
             if pill(ui, "Resume all", Pill::Quiet) {
                 actions.push(Action::ResumeAll);
             }
@@ -143,12 +140,25 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                         .hint_text("Search downloads"),
                 );
             });
-        ui.add_space(2.0);
+    });
+
+    // The list names itself and carries its own Clear list link, as QDM's does.
+    ui.add_space(10.0);
+    ui.horizontal(|ui| {
         ui.label(
-            RichText::new(format!("{} · {}", app.filter.label(), app.count_of(app.filter)))
-                .size(10.8)
-                .color(brand::DIM),
+            RichText::new(format!(
+                "{} · {}",
+                app.filter.label(),
+                app.count_of(app.filter)
+            ))
+            .font(brand::medium(12.5))
+            .color(brand::INK),
         );
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if !app.manager.jobs.is_empty() && w::text_link(ui, "Clear list") {
+                actions.push(Action::ClearList);
+            }
+        });
     });
 
     if !app.selected.is_empty() {

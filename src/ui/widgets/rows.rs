@@ -17,7 +17,7 @@ pub(crate) fn download_row(
 ) -> Option<Action> {
     let mut action = None;
 
-    brand::card_frame()
+    let card = brand::card_frame()
         .fill(brand::mix(
             brand::glass(),
             brand::ROSE_DEEP,
@@ -153,6 +153,16 @@ pub(crate) fn download_row(
                             .font(brand::medium(11.5))
                             .color(brand::MUTED),
                     );
+                    if let Some(finished) = job.finished_at {
+                        let when = crate::store::when_label(finished);
+                        if !when.is_empty() {
+                            ui.label(
+                                RichText::new(format!("{when} ·"))
+                                    .size(10.6)
+                                    .color(brand::DIM),
+                            );
+                        }
+                    }
                 });
             });
 
@@ -218,6 +228,17 @@ pub(crate) fn download_row(
                 }
             });
         });
+
+    // A status stripe hugs the card's left edge, the way QDM marks a row.
+    let edge = card.response.rect;
+    ui.painter().rect_filled(
+        Rect::from_min_max(
+            Pos2::new(edge.left() + 1.0, edge.top() + 9.0),
+            Pos2::new(edge.left() + 4.0, edge.bottom() - 9.0),
+        ),
+        CornerRadius::same(2),
+        brand::mix(status_colour(job.status), brand::glass(), 0.12),
+    );
     ui.add_space(8.0);
     action
 }
