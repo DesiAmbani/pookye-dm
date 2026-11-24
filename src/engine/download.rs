@@ -410,6 +410,73 @@ fn worker(
     }
 }
 
+/// How many ranges a transfer asks for: streams per network times the networks.
+pub(crate) fn total_streams(per_network: usize, lanes: usize) -> usize {
+    per_network.max(1) * lanes.max(1)
+}
+
+/// One planned byte range and the network that will carry it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct PlannedRange {
+    pub start: u64,
+    pub end: u64,
+    pub network: usize,
+    pub unbounded: bool,
+}
+
+/// Splits `total` bytes into streams for each of `lanes` networks, handing the
+/// ranges out round-robin so the networks take turns. A server without range
+/// support, an unknown size, a single stream or no selected network all fall back
+/// to one range on network 0.
+///
+/// The ranges always tile the file exactly: the first starts at 0, each one starts
+/// where the previous ended, and the last ends at `total - 1`.
+pub(crate) fn plan_ranges(
+    total: u64,
+    ranges: bool,
+    per_network: usize,
+    lanes: usize,
+) -> Vec<PlannedRange> {
+    let lanes = lanes.max(1);
+    let streams = total_streams(per_network, lanes);
+    let mut planned = Vec::new();
+    if total > 0 && ranges && streams > 1 {
+        // Never create a range smaller than MIN_SEGMENT.
+        let wanted = (total / MIN_SEGMENT).max(1) as usize;
+        let count = streams.min(wanted).max(1);
+        let size = total / count as u64;
+        for index in 0..count {
+            let start = index as u64 * size;
+            let end = if index + 1 == count {
+                total - 1
+            } else {
+                start + size - 1
+            };
+            planned.push(PlannedRange {
+                start,
+                end,
+                network: index % lanes,
+                unbounded: false,
+            });
+        }
+    } else if total > 0 {
+        planned.push(PlannedRange {
+            start: 0,
+            end: total - 1,
+            network: 0,
+            unbounded: false,
+        });
+    } else {
+        planned.push(PlannedRange {
+            start: 0,
+            end: u64::MAX - 1,
+            network: 0,
+            unbounded: true,
+        });
+    }
+    planned
+}
+
 pub(crate) fn supervisor(
     client: Client,
     url: String,
@@ -461,48 +528,21 @@ pub(crate) fn supervisor(
         }
         drop(file);
 
-        // Decide how to split. Never create segments smaller than MIN_SEGMENT.
-        // Each network gets its own share of streams, so two networks carry twice
-        // the ranges one network would.
+        // Every network gets its own share of the ranges, so two networks carry
+        // twice the ranges one network would.
         let lanes = binds.len().max(1);
-        let streams = connections.max(1) * lanes;
-        let mut segments = Vec::new();
-        if total > 0 && info.ranges && streams > 1 {
-            let wanted = (total / MIN_SEGMENT).max(1) as usize;
-            let count = streams.min(wanted).max(1);
-            let size = total / count as u64;
-            for index in 0..count {
-                let start = index as u64 * size;
-                let end = if index + 1 == count {
-                    total - 1
-                } else {
-                    start + size - 1
-                };
-                segments.push(Arc::new(Segment {
-                    start,
-                    end,
+        let segments: Vec<Arc<Segment>> = plan_ranges(total, info.ranges, connections, lanes)
+            .into_iter()
+            .map(|planned| {
+                Arc::new(Segment {
+                    start: planned.start,
+                    end: planned.end,
                     done: std::sync::atomic::AtomicU64::new(0),
-                    unbounded: false,
-                    network: index % lanes,
-                }));
-            }
-        } else if total > 0 {
-            segments.push(Arc::new(Segment {
-                start: 0,
-                end: total - 1,
-                done: std::sync::atomic::AtomicU64::new(0),
-                unbounded: false,
-                network: 0,
-            }));
-        } else {
-            segments.push(Arc::new(Segment {
-                start: 0,
-                end: u64::MAX - 1,
-                done: std::sync::atomic::AtomicU64::new(0),
-                unbounded: true,
-                network: 0,
-            }));
-        }
+                    unbounded: planned.unbounded,
+                    network: planned.network,
+                })
+            })
+            .collect();
 
         if let Ok(mut slot) = progress.segments.lock() {
             *slot = segments.clone();
@@ -541,4 +581,111 @@ pub(crate) fn supervisor(
         set_error(&progress, result.err().unwrap_or_default());
     }
     progress.finished.store(true, Ordering::Relaxed);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{plan_ranges, total_streams, PlannedRange};
+    use crate::engine::MIN_SEGMENT;
+
+    const MIB: u64 = 1024 * 1024;
+
+    fn networks(plan: &[PlannedRange]) -> Vec<usize> {
+        plan.iter().map(|range| range.network).collect()
+    }
+
+    fn bytes_per_network(plan: &[PlannedRange]) -> Vec<u64> {
+        let lanes = plan.iter().map(|range| range.network).max().unwrap_or(0) + 1;
+        let mut bytes = vec![0u64; lanes];
+        for range in plan {
+            bytes[range.network] += range.end - range.start + 1;
+        }
+        bytes
+    }
+
+    #[test]
+    fn streams_multiply_by_networks() {
+        assert_eq!(total_streams(4, 2), 8);
+        assert_eq!(total_streams(8, 1), 8);
+        assert_eq!(total_streams(8, 3), 24);
+        // Nothing selected still means one lane, one stream per network.
+        assert_eq!(total_streams(0, 0), 1);
+    }
+
+    #[test]
+    fn two_networks_take_turns() {
+        let plan = plan_ranges(64 * MIB, true, 4, 2);
+        assert_eq!(plan.len(), 8);
+        assert_eq!(networks(&plan), vec![0, 1, 0, 1, 0, 1, 0, 1]);
+    }
+
+    #[test]
+    fn three_networks_take_turns() {
+        let plan = plan_ranges(96 * MIB, true, 2, 3);
+        assert_eq!(plan.len(), 6);
+        assert_eq!(networks(&plan), vec![0, 1, 2, 0, 1, 2]);
+    }
+
+    #[test]
+    fn each_network_carries_an_even_share() {
+        let total = 8 * MIB;
+        let plan = plan_ranges(total, true, 4, 2);
+        let bytes = bytes_per_network(&plan);
+        assert_eq!(bytes, vec![total / 2, total / 2]);
+        assert_eq!(bytes.iter().sum::<u64>(), total);
+    }
+
+    #[test]
+    fn one_network_uses_lane_zero() {
+        let plan = plan_ranges(8 * MIB, true, 8, 1);
+        assert_eq!(plan.len(), 8);
+        assert!(plan.iter().all(|range| range.network == 0));
+    }
+
+    #[test]
+    fn no_selected_network_falls_back_to_one_lane() {
+        let plan = plan_ranges(8 * MIB, true, 4, 0);
+        assert_eq!(plan.len(), 4);
+        assert!(plan.iter().all(|range| range.network == 0));
+    }
+
+    #[test]
+    fn ranges_tile_the_file_without_gaps_or_overlap() {
+        for (total, per_network, lanes) in [
+            (8 * MIB, 8usize, 1usize),
+            (8 * MIB, 4, 2),
+            (33 * MIB + 7, 2, 3),
+            (97 * MIB + 13, 3, 5),
+        ] {
+            let plan = plan_ranges(total, true, per_network, lanes);
+            assert_eq!(plan[0].start, 0);
+            assert_eq!(plan.last().expect("a plan").end, total - 1);
+            for pair in plan.windows(2) {
+                assert_eq!(pair[1].start, pair[0].end + 1);
+            }
+            assert_eq!(bytes_per_network(&plan).iter().sum::<u64>(), total);
+        }
+    }
+
+    #[test]
+    fn small_files_blocked_servers_and_unknown_sizes_stay_single() {
+        // Smaller than the minimum range: one range, no splitting at all.
+        let tiny = plan_ranges(MIN_SEGMENT / 2, true, 8, 2);
+        assert_eq!(tiny.len(), 1);
+        assert_eq!(tiny[0].start, 0);
+        assert_eq!(tiny[0].end, MIN_SEGMENT / 2 - 1);
+        assert_eq!(tiny[0].network, 0);
+
+        // A server without Range support ignores the network plan entirely.
+        let plain = plan_ranges(1024, false, 16, 4);
+        assert_eq!(plain.len(), 1);
+        assert_eq!(plain[0].network, 0);
+        assert!(!plain[0].unbounded);
+
+        // Unknown length: one open-ended range on the first network.
+        let unknown = plan_ranges(0, true, 16, 4);
+        assert_eq!(unknown.len(), 1);
+        assert!(unknown[0].unbounded);
+        assert_eq!(unknown[0].network, 0);
+    }
 }

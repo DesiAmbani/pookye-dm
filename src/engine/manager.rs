@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use reqwest::blocking::Client;
 
-use super::download::{client, name_from_url, sanitize_name, supervisor};
+use super::download::{client, name_from_url, sanitize_name, supervisor, total_streams};
 use super::video::{find_tools, is_video_url, INSTALL_HINT, supervisor as video_supervisor};
 use super::{now_secs, Category, Limiter, Progress, RequestContext, Status};
 
@@ -155,7 +155,7 @@ impl Manager {
             binds
         };
         let per_network = per_network.clamp(1, 32);
-        let connections = per_network * binds.len();
+        let connections = total_streams(per_network, binds.len());
         let labels = if labels.len() == binds.len() {
             labels
         } else {
