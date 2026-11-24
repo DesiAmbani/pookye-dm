@@ -33,6 +33,8 @@ pub const INK: Color32 = Color32::from_rgb(0xF7, 0xF3, 0xF5);
 pub const MUTED: Color32 = Color32::from_rgb(0xC3, 0xA6, 0xB1);
 /// Tertiary text, labels and hints.
 pub const DIM: Color32 = Color32::from_rgb(0x8A, 0x6E, 0x79);
+/// A warm amber, kept for one job: a saved file that has gone missing.
+pub const WARN: Color32 = Color32::from_rgb(0xF2, 0xB4, 0x4C);
 
 /// The sidebar and status bar: one step off the background, edge to edge.
 pub const PANEL: Color32 = Color32::from_rgb(0x11, 0x10, 0x12);

@@ -142,6 +142,13 @@ pub(crate) fn download_row(
                             brand::DIM
                         }),
                 );
+                if job.missing {
+                    ui.label(
+                        RichText::new("moved or deleted")
+                            .font(brand::medium(10.8))
+                            .color(brand::WARN),
+                    );
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let label = match job.status {
                         Status::Queued => "Waiting for a free slot".to_string(),
@@ -167,6 +174,10 @@ pub(crate) fn download_row(
             });
 
             if expanded {
+                if job.missing {
+                    ui.add_space(10.0);
+                    missing_banner(ui, &job.path());
+                }
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -209,7 +220,10 @@ pub(crate) fn download_row(
                 if job.status.is_finished() && pill(ui, "Show in folder", Pill::Quiet) {
                     action = Some(Action::OpenFolder(job.id));
                 }
-                if job.status == Status::Completed && pill(ui, "Open file", Pill::Quiet) {
+                if job.status == Status::Completed
+                    && !job.missing
+                    && pill(ui, "Open file", Pill::Quiet)
+                {
                     action = Some(Action::OpenFile(job.id));
                 }
                 if matches!(job.status, Status::Failed | Status::Cancelled)
@@ -241,6 +255,43 @@ pub(crate) fn download_row(
     );
     ui.add_space(8.0);
     action
+}
+
+/// QDM's amber note on an expanded row: the saved file is gone from its folder.
+fn missing_banner(ui: &mut Ui, path: &Path) {
+    let frame = egui::Frame::new()
+        .fill(brand::mix(brand::glass(), brand::WARN, 0.10))
+        .stroke(Stroke::new(
+            1.0_f32,
+            brand::mix(brand::glass(), brand::WARN, 0.40),
+        ))
+        .corner_radius(CornerRadius::same(brand::R_TILE))
+        .inner_margin(egui::Margin::symmetric(12, 9));
+    frame.show(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let (dot, _) = ui.allocate_exact_size(Vec2::splat(16.0), Sense::hover());
+            ui.painter().circle_filled(dot.center(), 3.4, brand::WARN);
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
+                ui.label(
+                    RichText::new("This file is no longer where it was saved")
+                        .font(brand::medium(11.5))
+                        .color(brand::WARN),
+                );
+                ui.label(
+                    RichText::new("It may have been moved or deleted.")
+                        .size(10.4)
+                        .color(brand::mix(brand::WARN, brand::DIM, 0.55)),
+                );
+                ui.label(
+                    RichText::new(path.display().to_string())
+                        .size(10.2)
+                        .color(brand::DIM),
+                );
+            });
+        });
+    });
 }
 
 /// The disclosure arrow that opens a row's statistics, as in QDM.

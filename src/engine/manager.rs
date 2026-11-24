@@ -30,6 +30,9 @@ pub struct Job {
     pub net_speed: Vec<f64>,
     pub status: Status,
     pub error: Option<String>,
+    /// A completed job whose file is no longer in its folder.
+    pub missing: bool,
+    missing_at: Instant,
     pub progress: Arc<Progress>,
     pub speed: f64,
     pub peak: f64,
@@ -205,6 +208,8 @@ impl Manager {
             net_speed: Vec::new(),
             status: Status::Queued,
             error: None,
+            missing: false,
+            missing_at: Instant::now(),
             progress: Arc::new(Progress::new()),
             speed: 0.0,
             peak: 0.0,
@@ -500,6 +505,7 @@ impl Manager {
                     let _ = handle.join();
                 }
             }
+            job.check_missing();
         }
         // One sample a second for the whole queue, so the Speed page can draw
         // the same kind of history the row charts keep per download.
@@ -657,6 +663,8 @@ impl Job {
             net_speed: Vec::new(),
             status: self.status,
             error: self.error.clone(),
+            missing: self.missing,
+            missing_at: Instant::now(),
             progress: self.progress.clone(),
             speed: 0.0,
             peak: self.peak,
@@ -674,6 +682,20 @@ impl Job {
             history_at: Instant::now(),
             worker: None,
         }
+    }
+
+    /// Whether a completed download's file has gone from its folder. The disk is
+    /// only touched every second and a half, not once per frame per row.
+    pub fn check_missing(&mut self) {
+        if self.status != Status::Completed {
+            self.missing = false;
+            return;
+        }
+        if self.missing_at.elapsed().as_secs_f32() < 1.5 {
+            return;
+        }
+        self.missing_at = Instant::now();
+        self.missing = !self.path().exists();
     }
 
     /// Bytes written so far by each network's ranges, in network order.
