@@ -86,6 +86,8 @@ pub(crate) struct App {
     pub(crate) resizing: Option<crate::ui::shell::resize::Resize>,
     /// True while the window fills the monitor's work area.
     pub(crate) maximized: bool,
+    /// Whether the window held the keyboard on the previous frame.
+    focused: bool,
     /// Where to put the window back when it is restored.
     restore_geometry: Option<(egui::Vec2, egui::Pos2)>,
     /// The machine's usable networks, shown in the sidebar and the add sheet.
@@ -142,6 +144,7 @@ impl App {
             quitting: false,
             resizing: None,
             maximized: false,
+            focused: true,
             restore_geometry: None,
             adapters,
         }
@@ -489,6 +492,18 @@ impl eframe::App for App {
         if let Some(window) = self.window.as_ref() {
             window.strip_frame();
         }
+        // A click on the window is the user asking for it to be in front. A
+        // borderless window can be activated yet left behind a covering one, so
+        // the z-order is insisted on here rather than assumed. The focus edge
+        // covers alt-tab and the tray, where there is no click to catch.
+        let focused = ctx.input(|input| input.focused);
+        let pressed = ctx.input(|input| input.pointer.any_pressed());
+        if !self.hidden && (pressed || (focused && !self.focused)) {
+            if let Some(window) = self.window.as_ref() {
+                window.raise();
+            }
+        }
+        self.focused = focused;
         self.handle_tray(ctx);
         self.handle_close(ctx);
         brand::paint_background(ctx);

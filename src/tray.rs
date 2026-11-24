@@ -368,6 +368,26 @@ mod win {
             }
         }
 
+        /// Puts the window in front of the normal z-order and asks for the
+        /// keyboard. Windows only raises a window itself when it activates it,
+        /// and it can leave a borderless window behind a covering one; the
+        /// z-order raise is a call of its own so the window at least appears
+        /// where the click says it should.
+        pub fn raise(&self) {
+            unsafe {
+                SetWindowPos(
+                    self.hwnd,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE,
+                );
+                SetForegroundWindow(self.hwnd);
+            }
+        }
+
         /// Moves the window off-screen, drops its taskbar button and returns
         /// where it was, so it can be put back exactly there.
         pub fn park(&self) -> Option<(i32, i32)> {
@@ -412,7 +432,7 @@ mod win {
                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
                 );
                 ShowWindow(self.hwnd, SW_SHOW);
-                SetForegroundWindow(self.hwnd);
+                self.raise();
             }
         }
     }
