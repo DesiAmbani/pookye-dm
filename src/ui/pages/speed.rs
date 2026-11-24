@@ -88,6 +88,26 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
     });
 
     ui.add_space(12.0);
+    card(ui, |ui| {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new("Speed, last 90 seconds")
+                    .font(brand::medium(12.5))
+                    .color(brand::INK),
+            );
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.label(
+                    RichText::new(format_speed(app.manager.total_speed()))
+                        .font(brand::semi(14.0))
+                        .color(brand::ACCENT_BRIGHT),
+                );
+            });
+        });
+        ui.add_space(8.0);
+        w::sparkline(ui, &app.manager.speed_history, 96.0);
+    });
+
+    ui.add_space(12.0);
     if app.manager.jobs.is_empty() {
         ui.label(
             RichText::new("No downloads to show yet.")

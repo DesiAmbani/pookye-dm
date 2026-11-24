@@ -30,7 +30,11 @@ with a queue, per-connection telemetry and a browser handoff.
   without `Range` support falls back to a single stream instead of failing.
 - **Link probing** — before a download starts, Pookye DM asks the server for the
   size, the suggested file name, media type and range support.
-- **Live telemetry** — total and per-stream speed, percentage, bytes and ETA.
+- **Live telemetry** — total and per-stream speed, percentage, bytes and ETA, a
+  time-left card in the sidebar while anything runs, and a speed chart of the last
+  90 seconds on the Speed page.
+- **Per-download summary** — a finished or stopped download keeps its average speed,
+  peak speed, elapsed time, stream count and a chart of its own speed samples.
 - **System-wide speed limit** — one shared bandwidth budget for every stream of every
   download, not a per-file cap.
 - **Proxy** — an HTTP, HTTPS or SOCKS5 proxy can carry the next downloads and link

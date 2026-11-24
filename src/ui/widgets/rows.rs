@@ -2,9 +2,10 @@
 
 use super::prelude::*;
 use super::{
-    bars::{progress, segment},
+    bars::{progress, segment, sparkline},
     controls::{check, pill, Pill},
     files::host_of,
+    surfaces::metric,
 };
 
 
@@ -136,6 +137,27 @@ pub(crate) fn download_row(ui: &mut Ui, job: &Job, selected: bool) -> Option<Act
                     );
                 });
             });
+
+            if job.status.is_finished() {
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    metric(ui, "Average", format_speed(job.average_speed()));
+                    metric(ui, "Peak", format_speed(job.peak));
+                    metric(ui, "Time", format_duration(job.elapsed_secs()));
+                    metric(ui, "Streams", job.connections.to_string());
+                });
+                if job.history.len() > 1 {
+                    ui.add_space(9.0);
+                    ui.label(
+                        RichText::new("SPEED OVER THE TRANSFER")
+                            .size(9.2)
+                            .color(brand::DIM),
+                    );
+                    ui.add_space(4.0);
+                    sparkline(ui, &job.history, 58.0);
+                }
+            }
 
             ui.add_space(7.0);
             ui.horizontal_wrapped(|ui| {

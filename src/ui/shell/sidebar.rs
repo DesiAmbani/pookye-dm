@@ -120,6 +120,28 @@ impl App {
                                     }
                                 });
                             });
+                            // Above slow mode, as a countdown card while anything runs.
+                            if let Some(left) = self.manager.time_left() {
+                                ui.add_space(8.0);
+                                egui::Frame::new()
+                                    .fill(brand::ROSE_DEEP)
+                                    .stroke(egui::Stroke::new(1.0_f32, brand::ROSE))
+                                    .corner_radius(egui::CornerRadius::same(brand::R_CARD))
+                                    .inner_margin(Margin::symmetric(12, 9))
+                                    .show(ui, |ui| {
+                                        ui.set_width(ui.available_width());
+                                        ui.label(
+                                            RichText::new("Time left")
+                                                .size(9.8)
+                                                .color(brand::DIM),
+                                        );
+                                        ui.label(
+                                            RichText::new(crate::engine::format_clock(left))
+                                                .font(brand::semi(19.0))
+                                                .color(brand::ACCENT_BRIGHT),
+                                        );
+                                    });
+                            }
                         },
                     );
                 }

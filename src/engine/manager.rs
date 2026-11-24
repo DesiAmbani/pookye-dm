@@ -26,6 +26,11 @@ pub struct Job {
     pub peak: f64,
     pub started_at: Instant,
     pub finished_at: Option<u64>,
+    /// Wall clock of the moment the transfer began, so a finished job can still
+    /// say how long it took once `started_at` has been left behind.
+    pub started_secs: u64,
+    /// One speed sample a second, for the chart on the finished row.
+    pub history: Vec<f32>,
     /// The name the user chose, kept so a retry reuses it.
     pub requested_name: Option<String>,
     /// The supervisor fills this in once the server has been asked for the name.
@@ -37,6 +42,7 @@ pub struct Job {
     pub started: bool,
     sampled_bytes: u64,
     sampled_at: Instant,
+    history_at: Instant,
     worker: Option<thread::JoinHandle<()>>,
 }
 
@@ -49,6 +55,9 @@ pub struct Manager {
     /// False while a schedule window is shut; queued jobs then stay queued.
     allowed: bool,
     limiter: Arc<Limiter>,
+    /// The whole queue's speed, one sample a second.
+    pub speed_history: Vec<f32>,
+    speed_history_at: Instant,
 }
 
 impl Manager {
@@ -63,6 +72,8 @@ impl Manager {
             max_concurrent: max_concurrent.clamp(1, 10),
             allowed: true,
             limiter,
+            speed_history: Vec::new(),
+            speed_history_at: Instant::now(),
         }
     }
 
@@ -150,6 +161,8 @@ impl Manager {
             peak: 0.0,
             started_at: Instant::now(),
             finished_at: None,
+            started_secs: 0,
+            history: Vec::new(),
             requested_name: requested,
             name_slot: Arc::new(Mutex::new(None)),
             context,
@@ -157,6 +170,7 @@ impl Manager {
             started: false,
             sampled_bytes: 0,
             sampled_at: Instant::now(),
+            history_at: Instant::now(),
             worker: None,
         });
         self.pump();
@@ -186,9 +200,13 @@ impl Manager {
         job.status = Status::Downloading;
         job.error = None;
         job.started_at = Instant::now();
+        job.started_secs = now_secs();
         job.sampled_at = Instant::now();
         job.sampled_bytes = 0;
         job.speed = 0.0;
+        job.peak = 0.0;
+        job.history.clear();
+        job.history_at = Instant::now();
 
         let progress = job.progress.clone();
         let slot = job.name_slot.clone();
@@ -286,6 +304,8 @@ impl Manager {
                 job.progress.pause.store(false, Ordering::Relaxed);
                 job.status = Status::Cancelled;
                 job.speed = 0.0;
+                // Freeze the end time, so the summary tiles stop counting.
+                job.finished_at = Some(now_secs());
             }
         }
         self.pump();
@@ -325,7 +345,10 @@ impl Manager {
             job.error = None;
             job.started = false;
             job.speed = 0.0;
+            job.peak = 0.0;
             job.finished_at = None;
+            job.started_secs = 0;
+            job.history.clear();
             job.status = Status::Queued;
             job.file_name = job
                 .requested_name
@@ -369,6 +392,14 @@ impl Manager {
                 job.speed = 0.0;
             }
 
+            if job.status == Status::Downloading && job.history_at.elapsed().as_secs_f32() >= 1.0 {
+                job.history.push(job.speed as f32);
+                if job.history.len() > 90 {
+                    job.history.remove(0);
+                }
+                job.history_at = Instant::now();
+            }
+
             if job.progress.finished.load(Ordering::Relaxed)
                 && matches!(job.status, Status::Downloading | Status::Paused)
             {
@@ -386,6 +417,9 @@ impl Manager {
                         Status::Failed
                     }
                 };
+                if job.status == Status::Failed && job.finished_at.is_none() {
+                    job.finished_at = Some(now_secs());
+                }
                 if job.status == Status::Completed {
                     job.finished_at = Some(now_secs());
                     completed.push(job.clone_for_history());
@@ -396,8 +430,38 @@ impl Manager {
                 }
             }
         }
+        // One sample a second for the whole queue, so the Speed page can draw
+        // the same kind of history the row charts keep per download.
+        if self.speed_history_at.elapsed().as_secs_f32() >= 1.0 {
+            self.speed_history.push(self.total_speed() as f32);
+            if self.speed_history.len() > 90 {
+                self.speed_history.remove(0);
+            }
+            self.speed_history_at = Instant::now();
+        }
+
         self.pump();
         completed
+    }
+
+    /// Seconds until everything running has finished, at the current rate.
+    pub fn time_left(&self) -> Option<f64> {
+        let speed = self.total_speed();
+        if speed <= 1.0 {
+            return None;
+        }
+        let mut remaining = 0u64;
+        for job in self.jobs.iter().filter(|j| j.status == Status::Downloading) {
+            let total = job.progress.total();
+            if total > 0 {
+                remaining += total.saturating_sub(job.progress.bytes());
+            }
+        }
+        if remaining == 0 {
+            None
+        } else {
+            Some(remaining as f64 / speed)
+        }
     }
 
     pub fn total_speed(&self) -> f64 {
@@ -520,6 +584,8 @@ impl Job {
             peak: self.peak,
             started_at: self.started_at,
             finished_at: self.finished_at,
+            started_secs: self.started_secs,
+            history: self.history.clone(),
             requested_name: self.requested_name.clone(),
             name_slot: self.name_slot.clone(),
             context: self.context.clone(),
@@ -527,8 +593,38 @@ impl Job {
             started: self.started,
             sampled_bytes: 0,
             sampled_at: Instant::now(),
+            history_at: Instant::now(),
             worker: None,
         }
+    }
+
+    /// How long the transfer ran, in seconds.
+    ///
+    /// A cancelled or failed job has no `finished_at`, but still ran for a while,
+    /// so the wall clock since it started is used for those too rather than zero.
+    pub fn elapsed_secs(&self) -> f64 {
+        if let Some(finished) = self.finished_at {
+            if self.started_secs > 0 && finished >= self.started_secs {
+                return (finished - self.started_secs) as f64;
+            }
+        }
+        if self.started && self.started_secs > 0 {
+            let now = now_secs();
+            if now > self.started_secs {
+                return (now - self.started_secs) as f64;
+            }
+            return self.started_at.elapsed().as_secs_f64();
+        }
+        0.0
+    }
+
+    /// Bytes per second averaged over the whole transfer, not the last sample.
+    pub fn average_speed(&self) -> f64 {
+        let elapsed = self.elapsed_secs();
+        if elapsed < 0.2 {
+            return 0.0;
+        }
+        self.progress.bytes() as f64 / elapsed
     }
 
     /// The name the file actually got on disk, once the supervisor knows it.

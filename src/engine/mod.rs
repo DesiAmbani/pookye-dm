@@ -58,7 +58,7 @@ impl Status {
             Status::Downloading => "Downloading",
             Status::Paused => "Paused",
             Status::Completed => "Complete",
-            Status::Failed => "Stopped",
+            Status::Failed => "Failed",
             Status::Cancelled => "Cancelled",
         }
     }
@@ -293,6 +293,34 @@ pub fn format_eta(seconds: f64) -> String {
         format!("{}m left", (seconds / 60.0).ceil() as u64)
     } else {
         format!("{:.1}h left", seconds / 3600.0)
+    }
+}
+
+/// A compact duration for the stat tiles: "3s", "1m 04s", "1h 04m".
+pub fn format_duration(seconds: f64) -> String {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return "—".to_string();
+    }
+    let total = seconds.round() as u64;
+    if total < 60 {
+        format!("{total}s")
+    } else if total < 3600 {
+        format!("{}m {:02}s", total / 60, total % 60)
+    } else {
+        format!("{}h {:02}m", total / 3600, (total % 3600) / 60)
+    }
+}
+
+/// A countdown clock for the sidebar card: "04:12" or "1:04:12".
+pub fn format_clock(seconds: f64) -> String {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return "—".to_string();
+    }
+    let total = seconds.ceil() as u64;
+    if total >= 3600 {
+        format!("{}:{:02}:{:02}", total / 3600, (total % 3600) / 60, total % 60)
+    } else {
+        format!("{}:{:02}", total / 60, total % 60)
     }
 }
 

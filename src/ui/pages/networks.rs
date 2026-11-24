@@ -37,6 +37,7 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                         });
                     });
                     ui.add_space(8.0);
+                    let file_total: u64 = segments.iter().map(|(length, _, _)| *length).sum();
                     for (index, (length, done, start)) in segments.iter().enumerate() {
                         let part = if *length == 0 {
                             0.0
@@ -65,10 +66,18 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
                                 .size(10.0)
                                 .color(brand::MUTED),
                             );
+                            let share = if file_total == 0 {
+                                0.0
+                            } else {
+                                *length as f32 / file_total as f32 * 100.0
+                            };
                             ui.label(
-                                RichText::new(format!("byte {}", format_bytes(*start)))
-                                    .size(9.6)
-                                    .color(brand::DIM),
+                                RichText::new(format!(
+                                    "byte {} · {share:.0}%",
+                                    format_bytes(*start)
+                                ))
+                                .size(9.6)
+                                .color(brand::DIM),
                             );
                         });
                     }

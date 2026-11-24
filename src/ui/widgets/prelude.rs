@@ -10,5 +10,5 @@ pub(super) use eframe::egui::{
 pub(super) use crate::actions::Action;
 pub(super) use crate::brand;
 pub(super) use crate::engine::{
-    format_bytes, format_eta, format_percent, format_speed, Job, Status,
+    format_bytes, format_duration, format_eta, format_percent, format_speed, Job, Status,
 };

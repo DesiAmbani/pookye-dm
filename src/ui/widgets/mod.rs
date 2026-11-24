@@ -9,7 +9,7 @@ mod prelude;
 mod rows;
 mod surfaces;
 
-pub(crate) use bars::{progress, segment};
+pub(crate) use bars::{progress, segment, sparkline};
 pub(crate) use controls::{chip, pill, pill_sized, Pill};
 pub(crate) use files::{host_of, open_file, show_in_folder};
 pub(crate) use icons::Icon;
