@@ -238,14 +238,12 @@ fn chevron(ui: &mut Ui, expanded: bool) -> Response {
         brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover),
     );
     let c = rect.center();
-    let stroke = Stroke::new(1.4_f32, brand::mix(brand::DIM, brand::INK, hover));
-    if expanded {
-        painter.line_segment([c + Vec2::new(-4.0, 1.5), c + Vec2::new(0.0, -2.5)], stroke);
-        painter.line_segment([c + Vec2::new(0.0, -2.5), c + Vec2::new(4.0, 1.5)], stroke);
-    } else {
-        painter.line_segment([c + Vec2::new(-4.0, -1.5), c + Vec2::new(0.0, 2.5)], stroke);
-        painter.line_segment([c + Vec2::new(0.0, 2.5), c + Vec2::new(4.0, 1.5)], stroke);
-    }
+    let stroke = Stroke::new(1.5_f32, brand::mix(brand::MUTED, brand::INK, hover));
+    // Symmetric arms: a collapsed arrow whose right arm stops short of its left
+    // one reads as a stray tick rather than a chevron.
+    let (tip_y, end_y) = if expanded { (-2.6, 1.6) } else { (2.6, -1.6) };
+    painter.line_segment([c + Vec2::new(-5.0, end_y), c + Vec2::new(0.0, tip_y)], stroke);
+    painter.line_segment([c + Vec2::new(0.0, tip_y), c + Vec2::new(5.0, end_y)], stroke);
     response
 }
 
