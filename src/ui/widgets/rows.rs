@@ -1,13 +1,17 @@
 //! The download row: file tile, status pill and row actions.
+//!
+//! A row stays compact the way QDM's do: one header line, a progress bar and a
+//! facts line. Per-stream tracks, the statistics tiles and the speed chart live
+//! behind the chevron, and every action sits in the `···` menu, so a list of
+//! twenty downloads is twenty short lines rather than twenty button decks.
 
 use super::prelude::*;
 use super::{
     bars::{progress, segment, sparkline},
-    controls::{check, pill, Pill},
+    controls::check,
     files::host_of,
     surfaces::metric,
 };
-
 
 pub(crate) fn download_row(
     ui: &mut Ui,
@@ -23,7 +27,7 @@ pub(crate) fn download_row(
             brand::ROSE_DEEP,
             if selected { 1.0 } else { 0.0 },
         ))
-        .inner_margin(egui::Margin::same(15))
+        .inner_margin(egui::Margin::same(13))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 if check(ui, job.id, selected).clicked() {
@@ -61,6 +65,9 @@ pub(crate) fn download_row(
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     status_pill(ui, job.status);
+                    if let Some(chosen) = overflow(ui, job) {
+                        action = Some(chosen);
+                    }
                     if chevron(ui, expanded).clicked() {
                         action = Some(Action::ToggleDetails(job.id));
                     }
@@ -74,13 +81,13 @@ pub(crate) fn download_row(
                 });
             });
 
-            ui.add_space(11.0);
+            ui.add_space(10.0);
             let fraction = job.percent().unwrap_or(0.0);
             progress(
                 ui,
                 egui::Id::new(("row-progress", job.id)),
                 fraction,
-                if job.status == Status::Completed { 7.0 } else { 8.0 },
+                if job.status == Status::Completed { 6.0 } else { 7.0 },
                 match job.status {
                     Status::Completed => brand::mix(brand::ACCENT, Color32::WHITE, 0.25),
                     Status::Paused | Status::Cancelled => brand::mix(brand::ACCENT, brand::BG, 0.45),
@@ -89,30 +96,7 @@ pub(crate) fn download_row(
                 },
             );
 
-            let segments = job.progress.snapshot_segments();
-            if segments.len() > 1 {
-                ui.add_space(6.0);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 4.0;
-                    let width = (ui.available_width() - (segments.len() as f32 - 1.0) * 4.0)
-                        / segments.len() as f32;
-                    for (index, (length, done, _start, _network)) in segments.iter().enumerate() {
-                        let part = if *length == 0 {
-                            0.0
-                        } else {
-                            (*done as f32 / *length as f32).clamp(0.0, 1.0)
-                        };
-                        segment(
-                            ui,
-                            egui::Id::new(("seg", job.id, index)),
-                            part,
-                            width.max(3.0),
-                        );
-                    }
-                });
-            }
-
-            ui.add_space(9.0);
+            ui.add_space(8.0);
             ui.horizontal(|ui| {
                 let total = job.progress.total();
                 let bytes = job.progress.bytes();
@@ -174,11 +158,41 @@ pub(crate) fn download_row(
             });
 
             if expanded {
-                if job.missing {
-                    ui.add_space(10.0);
-                    missing_banner(ui, &job.path());
-                }
                 ui.add_space(10.0);
+                if job.missing {
+                    missing_banner(ui, &job.path());
+                    ui.add_space(10.0);
+                }
+                let segments = job.progress.snapshot_segments();
+                if segments.len() > 1 {
+                    ui.label(
+                        RichText::new("PER-STREAM PROGRESS")
+                            .font(brand::medium(9.2))
+                            .color(brand::DIM),
+                    );
+                    ui.add_space(5.0);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        let width = (ui.available_width() - (segments.len() as f32 - 1.0) * 4.0)
+                            / segments.len() as f32;
+                        for (index, (length, done, _start, _network)) in
+                            segments.iter().enumerate()
+                        {
+                            let part = if *length == 0 {
+                                0.0
+                            } else {
+                                (*done as f32 / *length as f32).clamp(0.0, 1.0)
+                            };
+                            segment(
+                                ui,
+                                egui::Id::new(("seg", job.id, index)),
+                                part,
+                                width.max(3.0),
+                            );
+                        }
+                    });
+                    ui.add_space(10.0);
+                }
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     metric(ui, "Average", format_speed(job.average_speed()));
@@ -197,50 +211,6 @@ pub(crate) fn download_row(
                     sparkline(ui, &job.history, 58.0);
                 }
             }
-
-            ui.add_space(7.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
-                match job.status {
-                    Status::Downloading | Status::Queued => {
-                        if pill(ui, "Pause", Pill::Quiet) {
-                            action = Some(Action::Pause(job.id));
-                        }
-                    }
-                    Status::Paused => {
-                        if pill(ui, "Resume", Pill::Quiet) {
-                            action = Some(Action::Resume(job.id));
-                        }
-                    }
-                    _ => {}
-                }
-                if job.status.is_active() && pill(ui, "Stop", Pill::Quiet) {
-                    action = Some(Action::Cancel(job.id));
-                }
-                if job.status.is_finished() && pill(ui, "Show in folder", Pill::Quiet) {
-                    action = Some(Action::OpenFolder(job.id));
-                }
-                if job.status == Status::Completed
-                    && !job.missing
-                    && pill(ui, "Open file", Pill::Quiet)
-                {
-                    action = Some(Action::OpenFile(job.id));
-                }
-                if matches!(job.status, Status::Failed | Status::Cancelled)
-                    && pill(ui, "Try again", Pill::Quiet)
-                {
-                    action = Some(Action::Retry(job.id));
-                }
-                if pill(ui, "Copy link", Pill::Quiet) {
-                    action = Some(Action::CopyLink(job.url.clone()));
-                }
-                if job.status.is_finished() && pill(ui, "Delete file", Pill::Quiet) {
-                    action = Some(Action::Delete(job.id));
-                }
-                if !job.status.is_active() && pill(ui, "Remove", Pill::Quiet) {
-                    action = Some(Action::Remove(job.id));
-                }
-            });
         });
 
     // A status stripe hugs the card's left edge, the way QDM marks a row.
@@ -253,7 +223,89 @@ pub(crate) fn download_row(
         CornerRadius::same(2),
         brand::mix(status_colour(job.status), brand::glass(), 0.12),
     );
-    ui.add_space(8.0);
+    ui.add_space(6.0);
+    action
+}
+
+/// The `···` control that holds every per-row action, so the compact row needs
+/// no button deck of its own.
+fn overflow(ui: &mut Ui, job: &Job) -> Option<Action> {
+    let mut action = None;
+    ui.scope(|ui| {
+        ui.spacing_mut().button_padding = Vec2::new(4.0, 1.0);
+        let widgets = &mut ui.style_mut().visuals.widgets;
+        widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+        widgets.inactive.bg_stroke = Stroke::NONE;
+        widgets.inactive.corner_radius = CornerRadius::same(6);
+        widgets.hovered.weak_bg_fill = brand::SURFACE_RAISED;
+        widgets.hovered.bg_stroke = Stroke::NONE;
+        widgets.hovered.corner_radius = CornerRadius::same(6);
+        widgets.active.weak_bg_fill = brand::ROSE;
+        widgets.active.bg_stroke = Stroke::NONE;
+        widgets.active.corner_radius = CornerRadius::same(6);
+        let label = RichText::new("···").font(brand::medium(14.0)).color(brand::MUTED);
+        ui.menu_button(label, |ui| {
+            action = row_menu(ui, job);
+        });
+    });
+    action
+}
+
+/// The menu behind `···`: the same actions the row used to spell out as pills.
+fn row_menu(ui: &mut Ui, job: &Job) -> Option<Action> {
+    let mut action = None;
+    ui.set_min_width(168.0);
+    ui.spacing_mut().item_spacing.y = 2.0;
+    ui.spacing_mut().button_padding = Vec2::new(9.0, 5.0);
+    let item = |ui: &mut Ui, label: &str| -> bool {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().button_padding = Vec2::new(9.0, 5.0);
+            ui.button(RichText::new(label).font(brand::medium(12.0)))
+                .clicked()
+        })
+        .inner
+    };
+
+    match job.status {
+        Status::Downloading | Status::Queued => {
+            if item(ui, "Pause") {
+                action = Some(Action::Pause(job.id));
+            }
+        }
+        Status::Paused => {
+            if item(ui, "Resume") {
+                action = Some(Action::Resume(job.id));
+            }
+        }
+        _ => {}
+    }
+    if job.status.is_active() && item(ui, "Stop") {
+        action = Some(Action::Cancel(job.id));
+    }
+    if job.status.is_finished() && item(ui, "Show in folder") {
+        action = Some(Action::OpenFolder(job.id));
+    }
+    if job.status == Status::Completed && !job.missing && item(ui, "Open file") {
+        action = Some(Action::OpenFile(job.id));
+    }
+    if matches!(job.status, Status::Failed | Status::Cancelled) && item(ui, "Try again") {
+        action = Some(Action::Retry(job.id));
+    }
+    if item(ui, "Copy link") {
+        action = Some(Action::CopyLink(job.url.clone()));
+    }
+    if job.status.is_finished() {
+        ui.separator();
+        if item(ui, "Delete file") {
+            action = Some(Action::Delete(job.id));
+        }
+    }
+    if !job.status.is_active() && item(ui, "Remove") {
+        action = Some(Action::Remove(job.id));
+    }
+    if action.is_some() {
+        ui.close_menu();
+    }
     action
 }
 
