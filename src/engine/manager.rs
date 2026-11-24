@@ -401,11 +401,12 @@ impl Manager {
     }
 
     pub fn total_speed(&self) -> f64 {
+        // Folded from positive zero: `f64`'s `Sum` identity is `-0.0`, which an
+        // idle queue would hand to the API and paint as a negative speed.
         self.jobs
             .iter()
             .filter(|j| j.status == Status::Downloading)
-            .map(|j| j.speed)
-            .sum()
+            .fold(0.0, |total, job| total + job.speed)
     }
 
     pub fn total_downloaded(&self) -> u64 {

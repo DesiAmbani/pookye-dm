@@ -46,25 +46,27 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
         });
     });
 
-    // One thin line for the whole queue, like the original's header rule.
-    let rows_now = app.filtered_rows().len();
-    let share = if rows_now == 0 {
+    // One thin line for the whole queue, like the original's header rule. Averaged
+    // over the jobs actually running: dividing by every listed row made a single
+    // download look like a sliver next to finished ones.
+    let running: Vec<f32> = app
+        .manager
+        .jobs
+        .iter()
+        .filter(|job| job.status.is_active())
+        .map(|job| {
+            let total = job.progress.total();
+            if total == 0 {
+                0.0
+            } else {
+                job.progress.bytes() as f32 / total as f32
+            }
+        })
+        .collect();
+    let share = if running.is_empty() {
         0.0
     } else {
-        app.manager
-            .jobs
-            .iter()
-            .filter(|job| job.status.is_active())
-            .map(|job| {
-                let total = job.progress.total();
-                if total == 0 {
-                    0.0
-                } else {
-                    job.progress.bytes() as f32 / total as f32
-                }
-            })
-            .sum::<f32>()
-            / rows_now as f32
+        running.iter().sum::<f32>() / running.len() as f32
     };
     w::progress(
         ui,
