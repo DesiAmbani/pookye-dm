@@ -45,6 +45,11 @@ pub(crate) fn download_row(
         hovered,
         0.10,
     );
+    // QDM selects a row wherever it is clicked. The row's own controls draw
+    // after this and override the action when one of them took the click.
+    if surface.clicked() {
+        action = Some(Action::Toggle(job.id));
+    }
 
     // QDM's list is a list, not a stack of cards: the row sits flat on the page
     // and a hairline closes it, so twenty downloads read as twenty lines.
