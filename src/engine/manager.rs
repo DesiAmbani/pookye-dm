@@ -41,6 +41,10 @@ pub struct Job {
     /// Wall clock of the moment the transfer began, so a finished job can still
     /// say how long it took once `started_at` has been left behind.
     pub started_secs: u64,
+    /// The run's length in sub-second precision, frozen when it ends. A file that
+    /// completes inside one second otherwise reads as zero seconds, and its
+    /// average and peak speeds as zero too.
+    run_secs: Option<f64>,
     /// One speed sample a second, for the chart on the finished row.
     pub history: Vec<f32>,
     /// The name the user chose, kept so a retry reuses it.
@@ -216,6 +220,7 @@ impl Manager {
             started_at: Instant::now(),
             finished_at: None,
             started_secs: 0,
+            run_secs: None,
             history: Vec::new(),
             requested_name: requested,
             name_slot: Arc::new(Mutex::new(None)),
@@ -255,6 +260,7 @@ impl Manager {
         job.error = None;
         job.started_at = Instant::now();
         job.started_secs = now_secs();
+        job.run_secs = None;
         job.sampled_at = Instant::now();
         job.sampled_bytes = 0;
         job.speed = 0.0;
@@ -372,6 +378,7 @@ impl Manager {
                 job.speed = 0.0;
                 // Freeze the end time, so the summary tiles stop counting.
                 job.finished_at = Some(now_secs());
+                job.run_secs = Some(job.started_at.elapsed().as_secs_f64());
             }
         }
         self.pump();
@@ -414,6 +421,7 @@ impl Manager {
             job.peak = 0.0;
             job.finished_at = None;
             job.started_secs = 0;
+            job.run_secs = None;
             job.history.clear();
             job.status = Status::Queued;
             job.file_name = job
@@ -493,11 +501,19 @@ impl Manager {
                         Status::Failed
                     }
                 };
+                let run_secs = job.started_at.elapsed().as_secs_f64();
                 if job.status == Status::Failed && job.finished_at.is_none() {
                     job.finished_at = Some(now_secs());
+                    job.run_secs = Some(run_secs);
                 }
                 if job.status == Status::Completed {
                     job.finished_at = Some(now_secs());
+                    job.run_secs = Some(run_secs);
+                    // A transfer shorter than the 0.25 s sampling window never
+                    // records a live sample; the average is then the only honest
+                    // peak, and it keeps the panel from reading "0 B/s" next to
+                    // a real average speed.
+                    job.peak = job.peak.max(job.average_speed());
                     completed.push(job.clone_for_history());
                 }
                 job.speed = 0.0;
@@ -671,6 +687,7 @@ impl Job {
             started_at: self.started_at,
             finished_at: self.finished_at,
             started_secs: self.started_secs,
+            run_secs: self.run_secs,
             history: self.history.clone(),
             requested_name: self.requested_name.clone(),
             name_slot: self.name_slot.clone(),
@@ -716,6 +733,9 @@ impl Job {
     /// A cancelled or failed job has no `finished_at`, but still ran for a while,
     /// so the wall clock since it started is used for those too rather than zero.
     pub fn elapsed_secs(&self) -> f64 {
+        if let Some(secs) = self.run_secs {
+            return secs;
+        }
         if let Some(finished) = self.finished_at {
             if self.started_secs > 0 && finished >= self.started_secs {
                 return (finished - self.started_secs) as f64;

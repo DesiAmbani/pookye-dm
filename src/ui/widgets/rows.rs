@@ -10,7 +10,6 @@ use super::{
     bars::{progress, segment, sparkline},
     controls::check,
     files::host_of,
-    surfaces::metric,
 };
 
 pub(crate) fn download_row(
@@ -193,12 +192,24 @@ pub(crate) fn download_row(
                     });
                     ui.add_space(10.0);
                 }
+                // QDM's strip: what the file weighs, what carried it, and the
+                // speeds and time it took. Tiles share the width so a long
+                // adapter name truncates instead of pushing the strip apart.
+                let tiles = [
+                    ("Size", size_label(job.progress.total())),
+                    ("Networks", networks_label(&job.networks)),
+                    ("Peak", format_speed(job.peak)),
+                    ("Average", format_speed(job.average_speed())),
+                    ("Time", format_duration(job.elapsed_secs())),
+                ];
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    metric(ui, "Average", format_speed(job.average_speed()));
-                    metric(ui, "Peak", format_speed(job.peak));
-                    metric(ui, "Time", format_duration(job.elapsed_secs()));
-                    metric(ui, "Streams", job.connections.to_string());
+                    let width = (ui.available_width()
+                        - 6.0 * (tiles.len() as f32 - 1.0))
+                        / tiles.len() as f32;
+                    for (label, value) in tiles {
+                        stat(ui, width, label, value);
+                    }
                 });
                 if job.history.len() > 1 {
                     ui.add_space(9.0);
@@ -344,6 +355,48 @@ fn missing_banner(ui: &mut Ui, path: &Path) {
             });
         });
     });
+}
+
+/// One tile in the expanded row's statistics strip, held to a shared width.
+fn stat(ui: &mut Ui, width: f32, label: &str, value: String) {
+    brand::tile_frame().show(ui, |ui| {
+        ui.set_width((width - 30.0).max(40.0));
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(
+                RichText::new(label.to_uppercase())
+                    .size(9.2)
+                    .color(brand::DIM),
+            );
+            ui.add(
+                egui::Label::new(
+                    RichText::new(value.clone())
+                        .font(brand::semi(15.5))
+                        .color(brand::INK),
+                )
+                .truncate(),
+            )
+            .on_hover_text(value);
+        });
+    });
+}
+
+/// The file's full size, or a dash while the server has not said it yet.
+fn size_label(total: u64) -> String {
+    if total == 0 {
+        "Unknown".to_string()
+    } else {
+        format_bytes(total)
+    }
+}
+
+/// The adapters that carried the job: one name, or how many shared it.
+fn networks_label(networks: &[String]) -> String {
+    match networks {
+        [] => "Default route".to_string(),
+        [one] => one.split(" · ").next().unwrap_or(one).to_string(),
+        many => format!("{} networks", many.len()),
+    }
 }
 
 /// The disclosure arrow that opens a row's statistics, as in QDM.
