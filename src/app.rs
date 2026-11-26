@@ -484,6 +484,13 @@ impl App {
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(120));
+        // The window is looked up until a live handle is held: at start-up it can
+        // not be found yet, and a handle kept from an earlier window goes stale.
+        // Without one, the frame styles are never stripped and the edges never
+        // resize, which both need this handle.
+        if self.window.as_ref().map_or(true, |window| !window.alive()) {
+            self.window = crate::tray::AppWindow::find();
+        }
         self.resize_edges(ctx);
         // winit keeps the caption and resize styles on a frameless window and only
         // hides the non-client area in WM_NCCALCSIZE. Windows still lays the drawn

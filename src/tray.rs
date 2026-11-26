@@ -58,6 +58,10 @@ impl AppWindow {
 
     pub fn strip_frame(&self) {}
 
+    pub fn alive(&self) -> bool {
+        false
+    }
+
     pub fn work_area(&self) -> Option<(i32, i32, i32, i32)> {
         None
     }
@@ -262,6 +266,7 @@ mod win {
         fn SetForegroundWindow(hwnd: Handle) -> i32;
         fn GetSystemMetrics(index: i32) -> i32;
         fn FindWindowW(class: *const u16, name: *const u16) -> Handle;
+        fn IsWindow(hwnd: Handle) -> i32;
         fn GetWindowRect(hwnd: Handle, rect: *mut WindowRect) -> i32;
         fn GetWindowLongW(hwnd: Handle, index: i32) -> i32;
         fn SetWindowLongW(hwnd: Handle, index: i32, value: i32) -> i32;
@@ -343,6 +348,13 @@ mod win {
                 return None;
             }
             Some((rect.left, rect.top))
+        }
+
+        /// Whether the handle still belongs to a live window. A handle kept from
+        /// start-up goes stale if the window is recreated, and a stale one answers
+        /// every style call with zero.
+        pub fn alive(&self) -> bool {
+            unsafe { IsWindow(self.hwnd) != 0 }
         }
 
         /// Drops the caption and resize frame styles that winit keeps even for a

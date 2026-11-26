@@ -46,26 +46,15 @@ impl App {
                     );
                 }
                 left.add_space(9.0);
-                // The two lines are measured and painted as one block. A stacked
-                // child ui hugs the top of the bar, which left the name riding
-                // above the mark's centre line instead of level with it.
-                let name =
-                    left.painter()
-                        .layout_no_wrap("Pookye DM".to_owned(), brand::semi(13.5), brand::INK);
-                let tagline = left.painter().layout_no_wrap(
-                    "Download Manager".to_owned(),
-                    egui::FontId::proportional(10.0),
-                    brand::DIM,
+                // The app's full name, painted as one measured line so it sits on
+                // the mark's centre line; a stacked child ui hugs the top instead.
+                let name = left.painter().layout_no_wrap(
+                    "Pookye Download Manager".to_owned(),
+                    brand::semi(13.5),
+                    brand::INK,
                 );
-                let name_h = name.size().y;
-                let block = Vec2::new(
-                    name.size().x.max(tagline.size().x),
-                    name_h + tagline.size().y,
-                );
-                let (text, _) = left.allocate_exact_size(block, Sense::hover());
+                let (text, _) = left.allocate_exact_size(name.size(), Sense::hover());
                 left.painter().galley(text.min, name, brand::INK);
-                left.painter()
-                    .galley(text.min + Vec2::new(0.0, name_h), tagline, brand::DIM);
 
                 let controls_rect =
                     Rect::from_min_max(Pos2::new(bar.right() - controls, bar.top()), bar.max);
