@@ -2,3 +2,4 @@ target/
 **/*.rs.bk
 packaging/out/
 *.pdb
+tools/

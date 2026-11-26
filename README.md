@@ -105,7 +105,8 @@ cargo build --release
 ### Opening it on Windows
 
 Double-click **`Run Pookye DM.cmd`** in the project folder. The first run builds
-the release binary (a minute or two); after that the launcher opens
+the release binary (a minute or two) and downloads `yt-dlp` and `ffmpeg` into
+`target\release\tools`; after that the launcher opens
 `targetelease\pookye-dm.exe` straight away. No terminal needed.
 
 The binary is self-contained: the logo is embedded as `assets/mark.png`, the Inter
@@ -262,6 +263,18 @@ the best picture and sound it offers, and remuxes the result into a fast-start `
 with `ffmpeg`. Both tools are found in `tools` beside the executable first, then on
 `PATH`.
 
+The launcher keeps them there for you: the first run of **`Run Pookye DM.cmd`** calls
+`scripts/fetch-tools.ps1`, which downloads `yt-dlp.exe` and `ffmpeg.exe` into
+`target\release\tools` if either is missing. Building with `cargo build` alone does
+not fetch them, so run the script once by hand in that case:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\fetch-tools.ps1
+```
+
+The binaries are third-party builds (yt-dlp from its GitHub releases, ffmpeg from
+gyan.dev's essentials build) and are ignored by git, so the repository stays small.
+
 ## Limitations (alpha)
 
 - Pausing is honoured between 64 KiB reads, so it is not instantaneous mid-chunk.
@@ -273,8 +286,8 @@ with `ffmpeg`. Both tools are found in `tools` beside the executable first, then
   adapter with no route to the server simply fails its share.
 - The automatic proxy mode that tests free proxies against a direct connection is not
   implemented; the proxy is used whenever it is switched on and valid.
-- Video pages need `yt-dlp` and `ffmpeg`: drop both into a `tools` folder next to
-  `pookye-dm.exe` (or install them on `PATH`). Without them the app says
+- Video pages need `yt-dlp` and `ffmpeg`: the launcher fetches both into `tools` next
+  to `pookye-dm.exe` (or install them on `PATH`). Without them the app says
   `Downloading videos needs yt-dlp and ffmpeg. Install them with: winget install yt-dlp ffmpeg`.
   Each video downloads over one network (no parallel streams), as in the original.
   Pausing a video stops it; resuming fetches that page again from the start.
