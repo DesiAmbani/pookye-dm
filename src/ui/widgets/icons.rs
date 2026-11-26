@@ -13,6 +13,12 @@ pub(crate) enum Icon {
     Info,
     Check,
     Alert,
+    Play,
+    Pause,
+    Folder,
+    External,
+    Retry,
+    Trash,
 }
 
 pub(crate) fn icon(painter: &egui::Painter, rect: Rect, kind: Icon, color: Color32) {
@@ -121,6 +127,112 @@ pub(crate) fn icon(painter: &egui::Painter, rect: Rect, kind: Icon, color: Color
                 [c + Vec2::new(0.0, -r * 0.1), c + Vec2::new(0.0, r * 0.45)],
                 Stroke::new(1.7_f32, color),
             );
+        }
+        Icon::Play => {
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    c + Vec2::new(-r * 0.44, -r * 0.62),
+                    c + Vec2::new(r * 0.66, 0.0),
+                    c + Vec2::new(-r * 0.44, r * 0.62),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Pause => {
+            for offset in [-r * 0.36, r * 0.36] {
+                painter.rect_filled(
+                    Rect::from_center_size(
+                        c + Vec2::new(offset, 0.0),
+                        Vec2::new(r * 0.34, r * 1.24),
+                    ),
+                    CornerRadius::same(1),
+                    color,
+                );
+            }
+        }
+        Icon::Folder => {
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r * 0.82, r * 0.62),
+                    c + Vec2::new(-r * 0.82, -r * 0.5),
+                    c + Vec2::new(-r * 0.24, -r * 0.5),
+                    c + Vec2::new(-r * 0.04, -r * 0.26),
+                    c + Vec2::new(r * 0.82, -r * 0.26),
+                    c + Vec2::new(r * 0.82, r * 0.62),
+                    c + Vec2::new(-r * 0.82, r * 0.62),
+                ],
+                stroke,
+            ));
+        }
+        Icon::External => {
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r * 0.74, r * 0.02),
+                    c + Vec2::new(-r * 0.74, r * 0.72),
+                    c + Vec2::new(r * 0.72, r * 0.72),
+                    c + Vec2::new(r * 0.72, -r * 0.02),
+                ],
+                stroke,
+            ));
+            painter.line_segment(
+                [
+                    c + Vec2::new(-r * 0.12, r * 0.12),
+                    c + Vec2::new(r * 0.74, -r * 0.74),
+                ],
+                stroke,
+            );
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(r * 0.24, -r * 0.74),
+                    c + Vec2::new(r * 0.74, -r * 0.74),
+                    c + Vec2::new(r * 0.74, -r * 0.24),
+                ],
+                stroke,
+            ));
+        }
+        Icon::Retry => {
+            let start = std::f32::consts::PI * 1.15;
+            painter.add(egui::Shape::line(
+                arc(start, std::f32::consts::PI * 2.35, r * 0.7, 20),
+                stroke,
+            ));
+            let tip = c + Vec2::new(start.cos(), start.sin()) * r * 0.7;
+            painter.add(egui::Shape::line(
+                vec![
+                    tip + Vec2::new(-r * 0.3, -r * 0.02),
+                    tip,
+                    tip + Vec2::new(r * 0.02, r * 0.3),
+                ],
+                stroke,
+            ));
+        }
+        Icon::Trash => {
+            painter.line_segment(
+                [
+                    c + Vec2::new(-r * 0.72, -r * 0.5),
+                    c + Vec2::new(r * 0.72, -r * 0.5),
+                ],
+                stroke,
+            );
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r * 0.22, -r * 0.5),
+                    c + Vec2::new(-r * 0.22, -r * 0.72),
+                    c + Vec2::new(r * 0.22, -r * 0.72),
+                    c + Vec2::new(r * 0.22, -r * 0.5),
+                ],
+                stroke,
+            ));
+            painter.add(egui::Shape::line(
+                vec![
+                    c + Vec2::new(-r * 0.54, -r * 0.3),
+                    c + Vec2::new(-r * 0.44, r * 0.74),
+                    c + Vec2::new(r * 0.44, r * 0.74),
+                    c + Vec2::new(r * 0.54, -r * 0.3),
+                ],
+                stroke,
+            ));
         }
     }
 }

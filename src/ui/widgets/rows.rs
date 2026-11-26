@@ -3,14 +3,16 @@
 //! A row is a flat line in a list, the way QDM's are: no card around it, a
 //! hairline underneath, a header line, a progress bar and a facts line.
 //! Per-stream tracks, the statistics tiles and the speed chart live behind the
-//! chevron, and every action sits in the `···` menu, so a list of twenty
-//! downloads is twenty short lines rather than twenty framed button decks.
+//! chevron; actions appear as a strip on hover, again from `···`, or from a
+//! right-click menu, so a list of twenty downloads is twenty short lines rather
+//! than twenty framed button decks.
 
 use super::prelude::*;
 use super::{
     bars::{progress, segment, sparkline},
     controls::check,
     files::host_of,
+    icons::{icon, Icon},
 };
 
 pub(crate) fn download_row(
@@ -20,6 +22,29 @@ pub(crate) fn download_row(
     expanded: bool,
 ) -> Option<Action> {
     let mut action = None;
+
+    // A right-click anywhere on the row opens the same menu as `···`. The area
+    // comes from the row's last measured height and is registered before the
+    // row's own controls draw, so those keep first claim on their clicks.
+    let height_id = egui::Id::new(("row-height", job.id));
+    let height = ui
+        .ctx()
+        .data(|data| data.get_temp::<f32>(height_id))
+        .unwrap_or(84.0);
+    let surface = ui.interact(
+        Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), height)),
+        egui::Id::new(("row-surface", job.id)),
+        Sense::click(),
+    );
+    let hovered = ui
+        .ctx()
+        .pointer_hover_pos()
+        .is_some_and(|pointer| surface.rect.contains(pointer));
+    let reveal = ui.ctx().animate_bool_with_time(
+        egui::Id::new(("row-actions", job.id)),
+        hovered,
+        0.10,
+    );
 
     // QDM's list is a list, not a stack of cards: the row sits flat on the page
     // and a hairline closes it, so twenty downloads read as twenty lines.
@@ -67,6 +92,9 @@ pub(crate) fn download_row(
                 });
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     status_pill(ui, job.status);
+                    if let Some(chosen) = row_actions(ui, job, reveal) {
+                        action = Some(chosen);
+                    }
                     if let Some(chosen) = overflow(ui, job) {
                         action = Some(chosen);
                     }
@@ -227,6 +255,17 @@ pub(crate) fn download_row(
             }
         });
 
+    ui.ctx()
+        .data_mut(|data| data.insert_temp(height_id, row.response.rect.height()));
+
+    let mut menu_action = None;
+    surface.context_menu(|ui| {
+        menu_action = row_menu(ui, job);
+    });
+    if let Some(chosen) = menu_action {
+        action = Some(chosen);
+    }
+
     // A status stripe hugs the row's left edge, the way QDM marks one, and a
     // hairline closes the row off from the next.
     let edge = row.response.rect;
@@ -246,6 +285,66 @@ pub(crate) fn download_row(
         Stroke::new(1.0_f32, brand::hairline()),
     );
     action
+}
+
+/// QDM's hover strip: the one action the row's state calls for, then reveal and
+/// remove. It keeps its space while hidden, so nothing shifts as you move down
+/// the list, and it fades in as the pointer enters the row.
+fn row_actions(ui: &mut Ui, job: &Job, reveal: f32) -> Option<Action> {
+    let mut action = None;
+    match job.status {
+        Status::Downloading | Status::Queued => {
+            if icon_action(ui, Icon::Pause, "Pause", brand::ACCENT_BRIGHT, reveal) {
+                action = Some(Action::Pause(job.id));
+            }
+        }
+        Status::Paused => {
+            if icon_action(ui, Icon::Play, "Resume", brand::ACCENT_BRIGHT, reveal) {
+                action = Some(Action::Resume(job.id));
+            }
+        }
+        Status::Failed | Status::Cancelled => {
+            if icon_action(ui, Icon::Retry, "Try again", brand::ACCENT_BRIGHT, reveal) {
+                action = Some(Action::Retry(job.id));
+            }
+        }
+        Status::Completed => {
+            if !job.missing
+                && icon_action(ui, Icon::External, "Open file", brand::ACCENT_BRIGHT, reveal)
+            {
+                action = Some(Action::OpenFile(job.id));
+            }
+        }
+    }
+    if job.status.is_finished()
+        && icon_action(ui, Icon::Folder, "Show in folder", brand::MUTED, reveal)
+    {
+        action = Some(Action::OpenFolder(job.id));
+    }
+    if icon_action(ui, Icon::Trash, "Remove", brand::MUTED, reveal) {
+        action = Some(Action::Remove(job.id));
+    }
+    action
+}
+
+/// One hover-strip button: a rounded square that lights up under the pointer.
+fn icon_action(ui: &mut Ui, kind: Icon, tip: &str, tint: Color32, reveal: f32) -> bool {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(26.0), Sense::click());
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let hover = ui
+        .ctx()
+        .animate_bool_with_time(response.id.with("hover"), response.hovered(), 0.10);
+    let painter = ui.painter();
+    painter.rect_filled(
+        rect,
+        CornerRadius::same(7),
+        brand::mix(Color32::TRANSPARENT, brand::SURFACE_RAISED, hover).gamma_multiply(reveal),
+    );
+    let colour = brand::mix(brand::MUTED, tint, hover.max(0.4)).gamma_multiply(reveal);
+    icon(painter, rect.shrink(6.5), kind, colour);
+    response.on_hover_text(tip).clicked()
 }
 
 /// The `···` control that holds every per-row action, so the compact row needs
