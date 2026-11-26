@@ -236,6 +236,9 @@ pub(super) fn draw(app: &mut App, ui: &mut egui::Ui) {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // Rows are flat lines closed by a hairline, so they sit flush
+                // against each other with no gap between them.
+                ui.spacing_mut().item_spacing.y = 0.0;
                 for id in rows {
                     if let Some(job) = app.manager.jobs.iter().find(|job| job.id == id) {
                         let selected = app.selected.contains(&id);

@@ -1,9 +1,10 @@
 //! The download row: file tile, status pill and row actions.
 //!
-//! A row stays compact the way QDM's do: one header line, a progress bar and a
-//! facts line. Per-stream tracks, the statistics tiles and the speed chart live
-//! behind the chevron, and every action sits in the `···` menu, so a list of
-//! twenty downloads is twenty short lines rather than twenty button decks.
+//! A row is a flat line in a list, the way QDM's are: no card around it, a
+//! hairline underneath, a header line, a progress bar and a facts line.
+//! Per-stream tracks, the statistics tiles and the speed chart live behind the
+//! chevron, and every action sits in the `···` menu, so a list of twenty
+//! downloads is twenty short lines rather than twenty framed button decks.
 
 use super::prelude::*;
 use super::{
@@ -20,20 +21,22 @@ pub(crate) fn download_row(
 ) -> Option<Action> {
     let mut action = None;
 
-    let card = brand::card_frame()
-        .fill(brand::mix(
-            brand::glass(),
-            brand::ROSE_DEEP,
-            if selected { 1.0 } else { 0.0 },
-        ))
-        .inner_margin(egui::Margin::same(13))
+    // QDM's list is a list, not a stack of cards: the row sits flat on the page
+    // and a hairline closes it, so twenty downloads read as twenty lines.
+    let row = egui::Frame::new()
+        .fill(if selected {
+            brand::mix(brand::glass(), brand::ROSE_DEEP, 1.0)
+        } else {
+            Color32::TRANSPARENT
+        })
+        .inner_margin(egui::Margin::symmetric(11, 9))
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 if check(ui, job.id, selected).clicked() {
                     action = Some(Action::Toggle(job.id));
                 }
                 ui.add_space(2.0);
-                file_tile(ui, &job.display_name());
+                file_tile(ui, &job.display_name(), 30.0);
                 ui.vertical(|ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
                     ui.label(
@@ -80,13 +83,13 @@ pub(crate) fn download_row(
                 });
             });
 
-            ui.add_space(10.0);
+            ui.add_space(7.0);
             let fraction = job.percent().unwrap_or(0.0);
             progress(
                 ui,
                 egui::Id::new(("row-progress", job.id)),
                 fraction,
-                if job.status == Status::Completed { 6.0 } else { 7.0 },
+                if job.status == Status::Completed { 5.0 } else { 6.0 },
                 match job.status {
                     Status::Completed => brand::mix(brand::ACCENT, Color32::WHITE, 0.25),
                     Status::Paused | Status::Cancelled => brand::mix(brand::ACCENT, brand::BG, 0.45),
@@ -95,7 +98,7 @@ pub(crate) fn download_row(
                 },
             );
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let total = job.progress.total();
                 let bytes = job.progress.bytes();
@@ -224,17 +227,24 @@ pub(crate) fn download_row(
             }
         });
 
-    // A status stripe hugs the card's left edge, the way QDM marks a row.
-    let edge = card.response.rect;
+    // A status stripe hugs the row's left edge, the way QDM marks one, and a
+    // hairline closes the row off from the next.
+    let edge = row.response.rect;
     ui.painter().rect_filled(
         Rect::from_min_max(
-            Pos2::new(edge.left() + 1.0, edge.top() + 9.0),
-            Pos2::new(edge.left() + 4.0, edge.bottom() - 9.0),
+            Pos2::new(edge.left(), edge.top() + 8.0),
+            Pos2::new(edge.left() + 3.0, edge.bottom() - 8.0),
         ),
         CornerRadius::same(2),
         brand::mix(status_colour(job.status), brand::glass(), 0.12),
     );
-    ui.add_space(6.0);
+    ui.painter().line_segment(
+        [
+            Pos2::new(edge.left(), edge.bottom() - 0.5),
+            Pos2::new(edge.right(), edge.bottom() - 0.5),
+        ],
+        Stroke::new(1.0_f32, brand::hairline()),
+    );
     action
 }
 
@@ -425,21 +435,22 @@ fn chevron(ui: &mut Ui, expanded: bool) -> Response {
 }
 
 /// A rounded tile holding the file's extension, like an app icon.
-fn file_tile(ui: &mut Ui, name: &str) {
+fn file_tile(ui: &mut Ui, name: &str, size: f32) {
     let ext = name
         .rsplit_once('.')
         .map(|(_, ext)| ext.chars().take(4).collect::<String>().to_uppercase())
         .unwrap_or_else(|| "FILE".to_string());
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(34.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
     let painter = ui.painter();
+    let corner = CornerRadius::same((size * 0.29) as u8);
     painter.rect_filled(
         rect,
-        CornerRadius::same(10),
+        corner,
         Color32::from_rgba_unmultiplied(255, 240, 246, 20),
     );
     painter.rect_stroke(
         rect,
-        CornerRadius::same(10),
+        corner,
         Stroke::new(1.0_f32, brand::hairline()),
         StrokeKind::Inside,
     );
